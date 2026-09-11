@@ -58,6 +58,16 @@ class BeaconTest < Minitest::Test
     assert_raises(ArgumentError) { Beacon.hook('a', '[]') }
   end
 
+  def test_installed_hooks_start_the_managed_service_instead_of_a_detached_controller
+    File.write(File.join(@directory, 'service-receipt.json'), '{}')
+    File.write(File.join(@directory, 'ready'), 'test')
+    calls = []
+    Beacon.stub(:system, ->(*args) { calls << args; true }) { Beacon.start }
+    assert_equal '/bin/launchctl', calls.first.first
+    assert_includes calls.first, 'kickstart'
+    assert_equal 1, calls.size
+  end
+
   def live_snapshot(requests = [], flags = [], status = 'active', revision = 1)
     {'type' => 'snapshot', 'revision' => revision, 'conversationState' => {
       'requests' => requests, 'threadRuntimeStatus' => {'type' => status, 'activeFlags' => flags},

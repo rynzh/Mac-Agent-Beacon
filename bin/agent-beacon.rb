@@ -91,9 +91,16 @@ module Beacon
       end
       FileUtils.rm_f(File.join(runtime, 'stop'))
       log = File.open(File.join(runtime, 'daemon.log'), 'a', 0600)
-      pid = Process.spawn(RbConfig.ruby, SCRIPT, 'run', in: File::NULL, out: log, err: log, pgroup: true)
-      Process.detach(pid)
-      log.close
+      begin
+        if File.file?(File.join(runtime, 'service-receipt.json'))
+          raise 'Could not start managed controller service' unless system('/bin/launchctl', 'kickstart', "gui/#{Process.uid}/local.agent-beacon.controller", out: log, err: log)
+        else
+          pid = Process.spawn(RbConfig.ruby, SCRIPT, 'run', in: File::NULL, out: log, err: log, pgroup: true)
+          Process.detach(pid)
+        end
+      ensure
+        log.close
+      end
       20.times do
         sleep 0.05
         break if File.exist?(File.join(runtime, 'ready'))
@@ -257,6 +264,8 @@ module Beacon
     when 'status'
       snapshot = transaction { |state| { mode: mode(state), sessions: state.dup } }
       snapshot[:output] = JSON.parse(File.read(File.join(runtime, 'output.json'))) if File.exist?(File.join(runtime, 'output.json'))
+      live_path = File.join(runtime, 'live-status.json')
+      snapshot[:live_observer] = JSON.parse(File.read(live_path)) if File.exist?(live_path)
       File.open(File.join(runtime, 'daemon.lock'), File::RDWR | File::CREAT, 0600) do |lock|
         snapshot[:controller_running] = !lock.flock(File::LOCK_EX | File::LOCK_NB)
       end

@@ -1,97 +1,48 @@
 #!/bin/bash
 set -euo pipefail
 
-usage() {
-  cat <<'EOF'
-Usage: ./install.sh [options]
-
-Options:
-  --repo URL            Clone this public repository before installation.
-  --with-claude         Install Claude Code hooks as well as Codex hooks.
-  --install-mapping     Opt in to the built-in Caps Lock remapping installer.
-  --no-hooks            Build and install files without modifying agent config.
-  --help                Show this help.
-
-For a published repository:
-  curl -fsSL https://raw.githubusercontent.com/rynzh/Mac-Agent-Beacon/main/install.sh | bash -s -- --repo https://github.com/rynzh/Mac-Agent-Beacon.git
-EOF
-}
-
-REPO_URL=''
-WITH_CLAUDE=0
-INSTALL_MAPPING=0
-INSTALL_HOOKS=1
-
+REPO_URL=https://github.com/rynzh/Mac-Agent-Beacon.git
+REPO_REF=main
+FORCE_DOWNLOAD=0
+SETUP_ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --repo) REPO_URL=${2:?missing repository URL}; shift 2 ;;
-    --with-claude) WITH_CLAUDE=1; shift ;;
-    --install-mapping) INSTALL_MAPPING=1; shift ;;
-    --no-hooks) INSTALL_HOOKS=0; shift ;;
-    --help) usage; exit 0 ;;
-    *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
+    --repo) REPO_URL=${2:?missing repository URL}; FORCE_DOWNLOAD=1; shift 2 ;;
+    --ref) REPO_REF=${2:?missing branch or tag}; FORCE_DOWNLOAD=1; shift 2 ;;
+    --help)
+      printf '%s\n' 'Agent Beacon: installs app, Codex hooks and login service; does not grant permissions or remap keys.'
+      printf '%s\n' 'Options: --with-claude --prefix PATH --no-hooks --no-service --repo URL --ref BRANCH_OR_TAG'
+      exit 0 ;;
+    --prefix) SETUP_ARGS+=("$1" "${2:?missing installation path}"); shift 2 ;;
+    --with-claude|--no-hooks|--no-service) SETUP_ARGS+=("$1"); shift ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; exit 64 ;;
   esac
 done
 
-SOURCE_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-TEMP_SOURCE=''
-cleanup() {
-  [ -z "$TEMP_SOURCE" ] || rm -rf "$TEMP_SOURCE"
-}
-trap cleanup EXIT INT TERM
-
-if [ -n "$REPO_URL" ]; then
-  command -v git >/dev/null 2>&1 || { printf 'git is required to clone the repository.\n' >&2; exit 1; }
-  TEMP_SOURCE=$(mktemp -d "${TMPDIR:-/tmp}/agent-beacon.XXXXXX")
-  git clone --depth=1 "$REPO_URL" "$TEMP_SOURCE/source"
-  SOURCE_DIR="$TEMP_SOURCE/source"
-fi
-
-for required in Makefile bin/agent-beacon.rb bin/codex-status.rb bin/codex-live.rb bin/persistence.rb native/led.c; do
-  [ -e "$SOURCE_DIR/$required" ] || { printf 'Not an Agent Beacon source directory: %s\n' "$SOURCE_DIR" >&2; exit 1; }
-done
-
-INSTALL_ROOT="${AGENT_BEACON_HOME:-$HOME/Library/Application Support/AgentBeacon}"
-APPLICATION="$INSTALL_ROOT/app"
-[ ! -e "$APPLICATION" ] || {
-  printf 'Agent Beacon is already installed at: %s\n' "$APPLICATION" >&2
-  printf 'Use the existing installation or uninstall it before reinstalling.\n' >&2
+[ "$(uname -s)" = Darwin ] || { printf 'macOS is required.\n' >&2; exit 1; }
+[ "$(id -u)" -ne 0 ] || { printf 'Run without sudo, as your normal user.\n' >&2; exit 1; }
+[ -x /usr/bin/ruby ] || { printf 'System Ruby 2.6+ is required.\n' >&2; exit 1; }
+/usr/bin/ruby -e 'abort "Ruby 2.6+ required" if Gem::Version.new(RUBY_VERSION) < Gem::Version.new("2.6")'
+if ! /usr/bin/xcode-select -p >/dev/null 2>&1 || ! /usr/bin/xcrun --find clang >/dev/null 2>&1; then
+  printf 'Install Apple Command Line Tools first: xcode-select --install\nThen rerun this installer.\n' >&2
   exit 1
-}
-
-STAGING="$INSTALL_ROOT/.app-install-$$"
-rm -rf "$STAGING"
-mkdir -p "$STAGING"
-for item in Makefile THIRD_PARTY_NOTICES.md LICENSE bin native test; do
-  cp -R "$SOURCE_DIR/$item" "$STAGING/"
+fi
+for dependency in make git sqlite3; do
+  command -v "$dependency" >/dev/null || { printf 'Missing dependency: %s\n' "$dependency" >&2; exit 1; }
 done
 
-(
-  cd "$STAGING"
-  make test
-)
-mv "$STAGING" "$APPLICATION"
-
-if [ "$INSTALL_HOOKS" -eq 1 ]; then
-  /usr/bin/ruby "$APPLICATION/bin/agent-beacon.rb" install-hooks codex
-  if [ "$WITH_CLAUDE" -eq 1 ]; then
-    /usr/bin/ruby "$APPLICATION/bin/agent-beacon.rb" install-hooks claude
-  fi
+SOURCE_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+if [ "$FORCE_DOWNLOAD" -eq 0 ] && [ -f "$SOURCE_DIR/bin/setup.rb" ]; then
+  exec /usr/bin/ruby "$SOURCE_DIR/bin/setup.rb" "${SETUP_ARGS[@]}"
 fi
 
-if [ "$INSTALL_MAPPING" -eq 1 ]; then
-  /usr/bin/ruby "$APPLICATION/bin/persistence.rb" install
-fi
-
-cat <<EOF
-
-Agent Beacon installed at:
-  $APPLICATION
-
-Next required steps:
-  1. System Settings → Privacy & Security → Input Monitoring:
-     allow $APPLICATION/build/beacon-led
-  2. In Codex CLI, run /hooks and review/trust Agent Beacon handlers.
-  3. Run this physical check after permission is granted:
-     /usr/bin/ruby "$APPLICATION/bin/agent-beacon.rb" demo
-EOF
+# Ruby owns and cleans its unique temporary directory even if clone/build fails.
+exec /usr/bin/ruby -rtmpdir -e '
+  repo, ref, *options = ARGV
+  Dir.mktmpdir("agent-beacon-download-") do |directory|
+    source = File.join(directory, "source")
+    abort "Download failed; nothing installed" unless system("git", "clone", "--depth=1", "--branch", ref, "--", repo, source)
+    abort "Downloaded source lacks setup.rb; publish the new installer first" unless File.file?(File.join(source, "bin/setup.rb"))
+    abort "Installation failed" unless system(RbConfig.ruby, File.join(source, "bin/setup.rb"), *options)
+  end
+' "$REPO_URL" "$REPO_REF" "${SETUP_ARGS[@]}"

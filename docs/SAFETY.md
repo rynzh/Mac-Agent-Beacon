@@ -1,22 +1,35 @@
-# Safety and rollback
+# 安全、卸载与旧安装迁移
 
-## Before installing persistent mapping
+## 新安装器
 
-1. Run the LED demo and visually confirm it works.
-2. Confirm Caps Lock is intended to become left Command.
-3. Back up any custom Karabiner configuration.
-4. Keep an external keyboard available while testing.
+默认不改键。它只安装程序、合并指定 Agent hooks、注册当前用户后台服务。
+已有程序或同名服务会被拒绝覆盖；不要通过删掉检查来强行安装。
+服务卸载会核对记录的文件路径与摘要，遇到被修改的配置会停下来。
+系统授权和 Codex hooks 信任必须由用户完成，安装器不会关闭安全检查。
 
-The installer only targets the Apple built-in keyboard. It refuses to continue when the selected Karabiner profile already has device-specific settings or when the system has an unfamiliar non-empty mapping.
+卸载步骤见 README。文件和配置备份默认保留，避免误删用户数据。
 
-## Roll back
+## 早期 persistence.rb 安装
 
-Run:
+这个脚本是为一个特定配置保留的：
 
-```sh
-ruby bin/persistence.rb uninstall
-```
+- 内置 Caps Lock → 左 Command。
+- 右 Command → 左 Control。
+- 右 Option → F19。
+- Karabiner 忽略该内置设备，并安装映射修复和控制器两个服务。
 
-This removes Agent Beacon's LaunchAgents, clears its known HID mapping, and restores the saved Karabiner configuration when the target profile remains unchanged. It deliberately leaves agent hooks installed; remove them separately with `uninstall-hooks` commands from the README.
+**它不适合所有用户，不能直接与新默认后台服务叠加安装。**
+不要在运行中的旧安装上执行新的安装器；旧的已授权 helper 和键位会保留。
+如果要迁移，先备份 `persistence-backup.json`、Karabiner 配置和原程序；
+确认愿意恢复原来的键盘处理后，使用原安装中的 `persistence.rb uninstall`。
+这会撤销它的映射和服务，可能改变你当前依赖的快捷键。
+再移除原 hooks、保存旧目录，按新 README 安装。
 
-If the installer reports that the profile changed, stop and restore manually from the runtime backup rather than forcing another mapping change.
+如果需要保留原三键映射，不要直接执行上述撤销步骤；目前没有经过验证的无缝迁移工具。
+维护者自己的现有安装也不应被新安装演练覆盖。
+
+## 不能保证的情况
+
+HID 被其他应用独占、系统持续改写 Caps LED、设备型号不同、Codex 内部接口升级，
+都可能阻止灯正常反映任务。不要因此禁用全局安全权限或盲目覆盖 Karabiner 配置。
+先运行发现检查与真实灯光测试；改键实验前保留备用键盘。

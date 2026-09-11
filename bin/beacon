@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+BEACON_BIN=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+export AGENT_BEACON_HOME="${AGENT_BEACON_HOME:-$(dirname -- "$(dirname -- "$BEACON_BIN")")}"
+if [ "${1:-}" = service ]; then
+  shift
+  exec /usr/bin/ruby "$BEACON_BIN/service.rb" "$@"
+fi
+exec /usr/bin/ruby "$BEACON_BIN/agent-beacon.rb" "$@"
