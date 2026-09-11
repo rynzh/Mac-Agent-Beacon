@@ -1,0 +1,10 @@
+build/
+.runtime/
+.debug-journal.md
+PLAN.md
+VERIFICATION.md
+.DS_Store
+*.agent-beacon.lock
+*.agent-beacon.tmp
+.ruby-lsp/
+.codegraph
