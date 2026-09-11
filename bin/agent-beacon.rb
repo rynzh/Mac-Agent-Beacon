@@ -5,6 +5,7 @@ require 'shellwords'
 require 'rbconfig'
 require 'timeout'
 require_relative 'codex-status'
+require_relative 'codex-live'
 
 module Beacon
   ROOT = File.expand_path('..', __dir__)
@@ -69,11 +70,13 @@ module Beacon
     data = JSON.parse(input)
     raise ArgumentError, 'hook payload must be an object' unless data.is_a?(Hash)
     name = data['hook_event_name']
+    # A permission request may be handled automatically, without waiting for the user.
+    return false if agent == 'codex' && name == 'PermissionRequest'
     status = EVENTS[name]
     if name == 'Notification'
       status = 'attention' if %w[permission_prompt idle_prompt elicitation_dialog].include?(data['notification_type'])
     end
-    status = 'attention' if name == 'PreToolUse' && data['tool_name'].to_s.match?(/AskUserQuestion|request_user_input/)
+    status = 'attention' if agent != 'codex' && name == 'PreToolUse' && data['tool_name'].to_s.match?(/AskUserQuestion|request_user_input/)
     return false unless status
     event(agent, data['session_id'] || data['thread_id'], status, data['turn_id'])
   end
@@ -109,21 +112,40 @@ module Beacon
       %w[INT TERM HUP].each { |sig| Signal.trap(sig) { stopping = true } }
       File.write(File.join(runtime, 'ready'), Process.pid.to_s)
       previous = nil
+      previous_mode = nil
       watcher = nil
       begin
         raise 'HID helper failed to start; run doctor' if output && Timeout.timeout(2) { output.gets } != "ready\n"
         unless simulation
           watcher = Thread.new do
+            live = CodexLive.new
             sources = [File.join(Dir.home, '.codex', 'thread_history_1.sqlite'),
                        File.join(Dir.home, '.codex', 'sqlite', 'thread_history_1.sqlite')].map { |path| CodexStatus.new(path) }
+            database_at = 0
+            database_errors = {}
             until stopping
+              live.poll
               begin
-                sources.each(&:poll)
+                now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+                if now >= database_at
+                  database_at = now + 1
+                  sources.each_with_index do |source, index|
+                    begin
+                      source.poll
+                      database_errors.delete(index)
+                    rescue StandardError => error
+                      warn "Agent Beacon database observer #{index}: #{error.class}" unless database_errors[index] == error.class
+                      database_errors[index] = error.class
+                    end
+                  end
+                end
               rescue StandardError => error
                 warn "Agent Beacon status observer: #{error.message}"
               end
-              sleep 1
+              sleep 0.1
             end
+          ensure
+            live.close if live
           end
         end
         until stopping || File.exist?(File.join(runtime, 'stop'))
@@ -137,11 +159,12 @@ module Beacon
                     when 'attention' then phase % 0.4 < 0.2 ? '1' : '0'
                     else '0'
                     end
-          if command != previous
+          if command != previous || current != previous_mode
             output.write(command) if output
             raise 'HID write failed; see daemon.log' if output && Timeout.timeout(2) { output.gets } != "ok\n"
             File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, at: Time.now.to_f }))
             previous = command
+            previous_mode = current
           end
           sleep 0.1
         end

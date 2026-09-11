@@ -56,7 +56,7 @@ module Persistence
       raise 'Install first' unless File.exist?(manifest_path)
       application = File.join(Beacon.runtime, 'app')
       %w[bin build].each { |directory| FileUtils.mkdir_p(File.join(application, directory), mode: 0700) }
-      %w[bin/agent-beacon.rb bin/codex-status.rb bin/persistence.rb build/beacon-led THIRD_PARTY_NOTICES.md].each do |relative|
+      %w[bin/agent-beacon.rb bin/codex-status.rb bin/codex-live.rb bin/persistence.rb build/beacon-led THIRD_PARTY_NOTICES.md].each do |relative|
         source = File.join(Beacon::ROOT, relative)
         destination = File.join(application, relative)
         FileUtils.cp(source, destination) unless source == destination

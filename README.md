@@ -9,15 +9,38 @@ Agent Beacon is a macOS-only, local-first prototype. It writes the physical Caps
 | Agent state | LED |
 | --- | --- |
 | Working or retrying | Solid on |
-| Waiting for approval, usage limit reached, or terminal task failure | Fast blink (0.2 seconds on, 0.2 seconds off) |
+| Pending human approval/input, usage limit, terminal failure, or lost live observer connection during work | Fast blink (0.2 seconds on, 0.2 seconds off) |
 | Completed or idle | Off |
 
-When more than one agent is active, attention takes precedence over working. A task that is actively retrying remains solid; the light only blinks after a terminal failure is recorded.
+**Codex Desktop approval detection:** a read-only local IPC observer checks both
+the live waiting flag and a pending approval request. Automatic review alone does
+not flash. Removing the last pending request clears the approval alert immediately,
+without waiting for the command to finish. The observer never approves or rejects
+requests, starts turns, or changes key mappings. It discards conversation text and
+retains only the status/request metadata needed for the light.
+
+This adapter uses an **internal, versioned desktop IPC protocol** (stream version
+11, verified with Codex Desktop's bundled CLI 0.153.4). It requires the desktop
+app and its local IPC socket. Standalone Codex CLI human-approval detection is
+not supported by this adapter; `PermissionRequest` alone is intentionally not used
+as proof of waiting. App updates may require an adapter update. Check
+`live-status.json` in the runtime directory: `connected: true` with `subscribed`
+greater than zero confirms live task snapshots are being received. A disconnected
+observer during observed work also flashes, because the light can no longer verify
+progress; this does not by itself prove an internet failure.
+
+Quota exhaustion and terminal network/permission/task failures are also read from
+Codex's local task database. Network retries remain solid while Codex continues
+retrying; a recorded terminal failure flashes. Silent hangs without an error or
+disconnect signal are not inferred from elapsed time. Claude's hooks are unchanged.
+
+When more than one agent is active, attention takes precedence over working.
 
 ## What it supports
 
 - Apple Internal Keyboard / Trackpad Caps Lock LED only.
 - Codex lifecycle hooks and read-only observation of local Codex task status, including `usageLimitExceeded` when the local status database provides it.
+- Codex Desktop live pending-approval/input and connection-loss observation.
 - Claude Code lifecycle hooks and notification events.
 - A generic CLI event interface for other local agents.
 - Optional persistent remapping for the built-in keyboard only: Caps Lock → left Command, right Command → left Control, right Option → F19.

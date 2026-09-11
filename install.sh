@@ -47,7 +47,7 @@ if [ -n "$REPO_URL" ]; then
   SOURCE_DIR="$TEMP_SOURCE/source"
 fi
 
-for required in Makefile bin/agent-beacon.rb bin/codex-status.rb bin/persistence.rb native/led.c; do
+for required in Makefile bin/agent-beacon.rb bin/codex-status.rb bin/codex-live.rb bin/persistence.rb native/led.c; do
   [ -e "$SOURCE_DIR/$required" ] || { printf 'Not an Agent Beacon source directory: %s\n' "$SOURCE_DIR" >&2; exit 1; }
 done
 

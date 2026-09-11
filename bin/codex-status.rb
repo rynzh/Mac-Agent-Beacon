@@ -9,6 +9,17 @@ module Beacon
       @seen = {}
     end
 
+    def self.failure_reason(code)
+      name = code.is_a?(Hash) ? code.keys.first : code
+      case name.to_s.downcase
+      when 'usagelimitexceeded' then 'usage_limit'
+      when 'httpconnectionfailed', 'responsestreamconnectionfailed', 'responsestreamdisconnected', 'responsetoomanyfailedattempts'
+        'network_failure'
+      when 'unauthorized', 'sandboxerror' then 'permission_failure'
+      else 'task_failed'
+      end
+    end
+
     def poll
       return unless File.file?(@path)
       sql = <<~SQL
@@ -44,7 +55,7 @@ module Beacon
           if status == 'failed'
             error = JSON.parse(row['error_json'] || '{}') rescue {}
             code = error.is_a?(Hash) ? error['codexErrorInfo'] : nil
-            reason = code == 'usageLimitExceeded' ? 'usage_limit' : 'task_failed'
+            reason = self.class.failure_reason(code)
           end
           state[key] = {'agent' => 'codex', 'session' => session, 'turn' => turn,
                         'status' => mode, 'at' => Time.now.to_f, 'reason' => reason}
