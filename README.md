@@ -1,7 +1,5 @@
 # Mac Agent Beacon
 
-![Mac Agent Beacon turns the MacBook Caps Lock LED into a Codex task status light](assets/agent-beacon-hero.png)
-
 Use the Caps Lock LED on a MacBook as a status light for background Codex tasks.
 
 **Solid = working · Fast blinking = needs attention · Off = finished**
@@ -9,6 +7,15 @@ Use the Caps Lock LED on a MacBook as a status light for background Codex tasks.
 Mac Agent Beacon runs locally and does not require an API key, cloud service,
 Homebrew, or Node.js. It controls only the LED: it does not press keys, remap
 Caps Lock, or change your agent's approval policy.
+
+<p align="center">
+  <img
+    src="assets/agent-beacon-hero.png"
+    alt="Mac Agent Beacon status light"
+    width="380"
+  />
+</p>
+
 
 ## Features
 
