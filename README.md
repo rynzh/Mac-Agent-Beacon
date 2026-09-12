@@ -5,7 +5,8 @@ Use the Caps Lock LED on a MacBook as a status light for background Codex tasks.
 **Solid = working · Fast blinking = needs attention · Off = finished**
 
 Mac Agent Beacon runs locally and does not require an API key, cloud service,
-Homebrew, or Node.js. It controls only the LED: it does not press keys, remap
+or Node.js. Homebrew is recommended; a source installer is also available.
+It controls only the LED: it does not press keys, remap
 Caps Lock, or change your agent's approval policy.
 
 <p align="center">
@@ -32,9 +33,10 @@ Caps Lock, or change your agent's approval policy.
 - Temporary network retries remain solid; only a terminal interruption alerts.
 - Built for Codex Desktop, with lifecycle hooks shared with Codex CLI.
 
-## Homebrew installation
+## Quick start: Homebrew (recommended)
 
-Install the preview release and configure Codex in one command:
+Install [Homebrew](https://brew.sh/) and open Codex at least once first. Then run
+this single command in Terminal as your normal user, without `sudo`:
 
 ```sh
 brew install --force-bottle rynzh/tap/agent-beacon && agent-beacon setup
@@ -44,13 +46,58 @@ Requires Homebrew and macOS 15 or later. Apple Silicon and Intel bottles are
 available; Homebrew manages Ruby automatically. The command requires a compatible
 bottle and will not silently fall back to compiling Agent Beacon from source.
 
-Then enable the LED helper in **System Settings → Privacy & Security → Input
-Monitoring**, using the path printed by setup, and trust Agent Beacon in Codex
-CLI's `/hooks`. Start a new Codex task to use the light.
+`agent-beacon setup` merges the Codex hooks with backups and starts the background
+service. It does not change keyboard mappings or grant permissions for you.
+
+Complete these two manual steps:
+
+1. In **System Settings → Privacy & Security → Input Monitoring**, add and enable
+   the LED helper at the exact path printed by setup. Press `Command-Shift-G` in
+   the file picker to enter that path. Follow any restart instruction from macOS,
+   then run `brew services restart agent-beacon`.
+2. In Codex CLI, open `/hooks`, review the new Agent Beacon entries, and trust
+   only commands pointing to your Homebrew `agent-beacon` launcher and ending in
+   `hook codex`. Start a new Codex Desktop task afterward.
+
+The install command cannot bypass either approval. If you installed the package
+without setup, run `agent-beacon setup` separately.
+
+### Verify the service and light
 
 ```sh
+brew services list
 agent-beacon status
-brew services restart agent-beacon
+```
+
+Expect `agent-beacon` to be `started`, `controller_running` to be `true`, and
+`output.simulated` to be `false`. With an active Codex Desktop task, the live
+observer should also report connected.
+
+For three physical light-on/light-off cycles, pause the service, run the demo,
+then restart the service even if the demo reports an error:
+
+```sh
+brew services stop agent-beacon && agent-beacon demo
+brew services start agent-beacon
+```
+
+Confirm the light visually. The demo does not press keys or change mappings.
+After the service restarts, the light resumes the current task state; an active
+task should be solid, not necessarily off.
+
+If Homebrew reports `error 1`, inspect the service log:
+
+```sh
+tail -n 40 "$(brew --prefix)/var/log/agent-beacon.log"
+```
+
+An HID-access error means the helper could not access the LED; check Input
+Monitoring and possible keyboard-tool conflicts, then restart the service.
+Do not disable macOS security or remove keyboard mappings to make it start.
+
+### Upgrade or uninstall
+
+```sh
 brew upgrade agent-beacon
 agent-beacon setup
 ```
@@ -63,8 +110,31 @@ agent-beacon uninstall
 brew uninstall agent-beacon
 ```
 
-Existing source installations must be removed or migrated first; setup stops if
-it detects the old service. See [Homebrew details](docs/HOMEBREW.md).
+### Migrate an existing source installation
+
+Do not run two controllers against the same LED. Setup deliberately stops if it
+finds the old `local.agent-beacon.controller` service, even if it is not running.
+Back up the existing installation and hook configuration first.
+
+For the standard source installer **with a `service-receipt.json` file**, remove
+its integration using its original launcher, then configure Homebrew:
+
+```sh
+BEACON_DIR="$HOME/Library/Application Support/AgentBeacon/app"
+"$BEACON_DIR/bin/beacon" uninstall-hooks codex
+"$BEACON_DIR/bin/beacon" service remove
+agent-beacon setup
+```
+
+These commands retain app files, logs and backups. Recheck Input Monitoring:
+the Homebrew helper is a different executable from the source-installed helper.
+
+If you used an early `persistence.rb` installation or depend on its Caps Lock /
+Command / Option mappings, **do not run its uninstaller blindly**: it can restore
+the old mappings. There is no automated mapping-preserving migration command.
+Keep the mapping service and configuration intact and review
+[the migration notes](docs/SAFETY.md) before switching controllers.
+See [Homebrew details](docs/HOMEBREW.md) for package and release information.
 
 ## Source installation requirements
 
@@ -139,7 +209,7 @@ Open Codex Desktop and start a task. The LED should stay solid while Codex works
 blink when Codex is genuinely waiting for your action, and turn off when the task
 finishes.
 
-## Check the installation
+## Check a source installation
 
 ```sh
 "$HOME/Library/Application Support/AgentBeacon/app/bin/beacon" status
@@ -159,7 +229,7 @@ BEACON_DIR="$HOME/Library/Application Support/AgentBeacon/app"
 
 Stop the controller before the demo so two processes do not compete for the LED.
 
-## Uninstall
+## Uninstall a source installation
 
 ```sh
 BEACON_DIR="$HOME/Library/Application Support/AgentBeacon/app"
