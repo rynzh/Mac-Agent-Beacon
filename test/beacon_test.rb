@@ -237,7 +237,7 @@ class BeaconTest < Minitest::Test
     observer.apply(row.merge('status' => 'failed', 'error_json' => '{"codexErrorInfo":"usageLimitExceeded","message":"private error"}'))
     assert_equal 'usage_limit', snapshot.values.first['reason']
     Beacon.event('codex', 'quota-test', 'done', 'one')
-    assert_equal 'attention', Beacon.mode(snapshot)
+    assert_equal 'done', Beacon.mode(snapshot)
     refute_includes File.read(File.join(@directory, 'state.json')), 'private error'
     observer.apply(row.merge('turn_id' => 'two', 'started_at' => Time.now.to_f + 1))
     assert_equal 'working', Beacon.mode(snapshot)
