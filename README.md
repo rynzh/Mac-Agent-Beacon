@@ -37,12 +37,12 @@ Caps Lock, or change your agent's approval policy.
 Install the preview release and configure Codex in one command:
 
 ```sh
-brew install rynzh/tap/agent-beacon && agent-beacon setup
+brew install --force-bottle rynzh/tap/agent-beacon && agent-beacon setup
 ```
 
-Homebrew manages Ruby automatically. Precompiled bottles target macOS 15 on
-Apple Silicon and Intel; check the [Tap build status](https://github.com/rynzh/homebrew-tap/actions)
-before installing. Without a compatible bottle, Homebrew may build from source.
+Requires Homebrew and macOS 15 or later. Apple Silicon and Intel bottles are
+available; Homebrew manages Ruby automatically. The command requires a compatible
+bottle and will not silently fall back to compiling Agent Beacon from source.
 
 Then enable the LED helper in **System Settings → Privacy & Security → Input
 Monitoring**, using the path printed by setup, and trust Agent Beacon in Codex

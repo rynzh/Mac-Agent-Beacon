@@ -9,7 +9,7 @@ an `agent-beacon` launcher under Homebrew's `bin`. Hook commands use the stable
 ## Installation
 
 ```sh
-brew install rynzh/tap/agent-beacon && agent-beacon setup
+brew install --force-bottle rynzh/tap/agent-beacon && agent-beacon setup
 ```
 
 Setup merges hooks with backups and starts a Homebrew-managed user service.
@@ -21,7 +21,8 @@ Input Monitoring and Codex hook trust are manual. The helper path is printed by
 setup. The service retries after startup failure. To retry immediately after
 authorization, run `brew services restart agent-beacon`.
 
-Ruby is a Homebrew dependency. The observer uses macOS's `/usr/bin/sqlite3`.
+The Homebrew package requires macOS 15 or later. Ruby is a Homebrew dependency.
+The observer uses macOS's `/usr/bin/sqlite3`.
 The service and hooks do not depend on an interactive shell's PATH.
 
 ## Previous installations
@@ -39,6 +40,8 @@ Run `brew upgrade agent-beacon`, followed by `agent-beacon setup` to restart the
 controller. Stable hook paths survive version changes. This does not guarantee
 that macOS retains LED permission: the helper is not Developer ID signed yet.
 Reauthorize the helper if necessary.
+
+Service output is written to Homebrew's `var/log/agent-beacon.log`.
 
 Run `agent-beacon uninstall` before `brew uninstall agent-beacon`. This stops the
 Homebrew service and removes matching hooks; logs and backups remain.
@@ -60,5 +63,15 @@ Tap. Updating the main repository template does not update the Tap automatically
 
 Hosted runners cannot verify a real keyboard LED or macOS Input Monitoring UI.
 Physical-device approval, upgrade and sleep/wake tests remain separate checks.
-On systems without a compatible bottle, Homebrew can fall back to source builds;
-do not advertise those platforms as requiring no compiler.
+The recommended command uses `--force-bottle` so an unavailable bottle produces
+an error instead of silently requiring a compiler. Omitting that flag allows
+Homebrew's normal source fallback.
+
+## Verified release
+
+Version 0.2.0 has Intel and Apple Silicon bottles built and reinstalled by
+[the successful release workflow](https://github.com/rynzh/homebrew-tap/actions/runs/34676509444).
+The source suite passed 31 tests and 158 assertions. A public Homebrew Bottle
+download and installation also passed status, simulated controller startup and
+graceful-stop checks in an isolated data directory. This does not replace physical
+keyboard tests on additional machines.
