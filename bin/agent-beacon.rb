@@ -44,7 +44,7 @@ module Beacon
     transaction do |state|
       key = Digest::SHA256.hexdigest("#{agent}\0#{session}")
       old = state[key]
-      next false if old && old['status'] == 'error' && old['turn'] == turn && %w[done working].include?(status)
+      next false if old && old['status'] == 'error' && old['turn'] == turn && status == 'working'
       if old && turn && old['turn'] && old['turn'] != turn && status != 'working'
         next false
       end

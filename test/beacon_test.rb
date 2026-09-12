@@ -131,7 +131,7 @@ class BeaconTest < Minitest::Test
       observer.apply(row)
       assert_equal 'attention', Beacon.mode(snapshot)
       Beacon.hook('codex', JSON.generate({hook_event_name: 'Stop', session_id: code, turn_id: 'one'}))
-      assert_equal 'attention', Beacon.mode(snapshot)
+      assert_equal 'done', Beacon.mode(snapshot)
       observer.apply(row.merge('turn_id' => 'two', 'status' => 'inProgress'))
       assert_equal 'working', Beacon.mode(snapshot)
       Beacon.event('codex', code, 'idle', 'two')
