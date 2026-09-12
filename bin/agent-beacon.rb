@@ -6,6 +6,7 @@ require 'rbconfig'
 require 'timeout'
 require_relative 'codex-status'
 require_relative 'codex-live'
+require_relative 'backlight'
 
 module Beacon
   ROOT = File.expand_path('..', __dir__)
@@ -122,6 +123,8 @@ module Beacon
       File.write(File.join(runtime, 'ready'), Process.pid.to_s)
       previous = nil
       previous_mode = nil
+      previous_backlight = nil
+      backlight = Backlight.new
       watcher = nil
       begin
         raise 'HID helper failed to start; run doctor' if output && Timeout.timeout(2) { output.gets } != "ready\n"
@@ -168,17 +171,27 @@ module Beacon
                     when 'attention' then phase % 0.4 < 0.2 ? '1' : '0'
                     else '0'
                     end
+          enabled = Backlight.enabled?(runtime)
           if command != previous || current != previous_mode
             output.write(command) if output
             raise 'HID write failed; see daemon.log' if output && Timeout.timeout(2) { output.gets } != "ok\n"
-            File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, at: Time.now.to_f }))
+          end
+          backlight_status = if simulation
+                               {'enabled' => enabled, 'active' => false, 'error' => nil, 'simulated' => true}
+                             else
+                               backlight.update(current, command, enabled: enabled).merge('simulated' => false)
+                             end
+          if command != previous || current != previous_mode || backlight_status != previous_backlight
+            File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, backlight: backlight_status, at: Time.now.to_f }))
             previous = command
             previous_mode = current
+            previous_backlight = backlight_status
           end
           sleep 0.1
         end
       ensure
         stopping = true
+        backlight.close
         watcher.join if watcher
         if output && !output.closed?
           output.close_write
@@ -232,6 +245,21 @@ module Beacon
   def self.main(args)
     command = args.shift
     case command
+    when 'backlight'
+      action = args.shift
+      raise ArgumentError, 'backlight on|off|status|inspect' unless args.empty? && %w[on off status inspect].include?(action)
+      if action == 'inspect'
+        exit(system(Backlight::HELPER, 'inspect') ? 0 : 1)
+      elsif action == 'status'
+        puts JSON.pretty_generate({enabled: Backlight.enabled?(runtime)})
+      else
+        FileUtils.mkdir_p(runtime, mode: 0700)
+        temporary = File.join(runtime, "backlight.#{Process.pid}.tmp")
+        File.write(temporary, JSON.generate({'enabled' => action == 'on'}) + "\n", perm: 0600)
+        File.rename(temporary, File.join(runtime, 'backlight.json'))
+        start if action == 'on'
+        puts "Keyboard backlight alerts #{action == 'on' ? 'enabled' : 'disabled'}; the running controller picks up this setting automatically."
+      end
     when 'doctor'
       raise 'Run make first' unless File.executable?(HELPER)
       exit(system(HELPER, 'inspect') ? 0 : 1)
@@ -284,7 +312,7 @@ module Beacon
       configure(agent, path, remove: command == 'uninstall-hooks')
       puts "#{command}: #{path}"
     when nil, 'help', '--help'
-      puts "Agent Beacon: LED only; keyboard mappings are never changed.\nCommands: doctor, demo, start, stop, status, clear\n          event AGENT SESSION working|attention|done|idle|error [TURN]\n          install-hooks|uninstall-hooks codex|claude [CONFIG_PATH]\nEnvironment: AGENT_BEACON_HOME, AGENT_BEACON_SIMULATE=1 (test only)"
+      puts "Agent Beacon: status lights; keyboard mappings are never changed.\nCommands: doctor, demo, start, stop, status, clear\n          backlight on|off|status|inspect (optional attention flashes)\n          event AGENT SESSION working|attention|done|idle|error [TURN]\n          install-hooks|uninstall-hooks codex|claude [CONFIG_PATH]\nEnvironment: AGENT_BEACON_HOME, AGENT_BEACON_SIMULATE=1 (test only)"
     else
       raise ArgumentError, 'Unknown command; use --help'
     end

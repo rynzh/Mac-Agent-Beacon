@@ -6,7 +6,7 @@ Use the Caps Lock LED on a MacBook as a status light for background Codex tasks.
 
 Mac Agent Beacon runs locally and does not require an API key, cloud service,
 or Node.js. Homebrew is recommended; a source installer is also available.
-It controls only the LED: it does not press keys, remap
+It controls status lights only: it does not press keys, remap
 Caps Lock, or change your agent's approval policy.
 
 <p align="center">
@@ -32,6 +32,43 @@ Caps Lock, or change your agent's approval policy.
 - Ordinary text such as “reply approve and I will continue” is not inferred.
 - Temporary network retries remain solid; only a terminal interruption alerts.
 - Built for Codex Desktop, with lifecycle hooks shared with Codex CLI.
+
+### Optional whole-keyboard backlight alerts
+
+The built-in keyboard backlight can blink in the same phase as the Caps Lock LED
+when a task needs attention. It is off by default. To enable it:
+
+```sh
+agent-beacon backlight inspect
+agent-beacon backlight on
+```
+
+For a source installation, replace `agent-beacon` with
+`"$HOME/Library/Application Support/AgentBeacon/app/bin/beacon"`.
+Use `backlight off` to disable it; a running controller applies the change without
+a restart. `backlight status` shows the saved preference, and `status` includes
+the active backlight output and any helper error.
+
+Only the existing attention state flashes the backlight: pending approval/input,
+terminal failures, or observer disconnection during active work. Working and idle
+states leave normal keyboard illumination alone. Both lights use the controller's
+same 0.4-second cycle. Alert brightness is the current brightness or 35%, whichever
+is higher; the dark phase is zero. The display brightness is never changed.
+
+The helper snapshots brightness, automatic brightness and idle dimming before
+each alert. It temporarily pauses automatic brightness and idle dimming, then
+restores all three settings when the alert ends, the feature is disabled, stdin
+closes, or it receives SIGINT/SIGTERM/SIGHUP. A two-second input watchdog restores
+the settings if the controller stalls. Changes made manually during an alert are
+replaced by the saved settings when the alert ends. A force-killed helper or power
+loss cannot perform cleanup; use the macOS keyboard brightness controls if needed.
+If automatic brightness was enabled, macOS can adjust the restored brightness
+again immediately according to the ambient light.
+
+This optional helper uses Apple's private CoreBrightness API, which can change
+between macOS releases. An unavailable or failing backlight helper is reported
+without stopping the Caps Lock output. It supports a built-in backlit keyboard,
+not external RGB keyboards, and is never started in simulation mode.
 
 ## Quick start: Homebrew (recommended)
 
