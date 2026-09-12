@@ -31,6 +31,8 @@ native macOS mapping. This PR does not configure or alter those mappings.
 - The actual brightness readback followed both on/off phases.
 - Twenty stable samples of the installed controller's Caps Lock phase and
   CoreBrightness readback matched. Both outputs were real, not simulated.
+- The user visually confirmed synchronized whole-keyboard/Caps Lock blinking
+  during a ten-second test and normal backlight restoration afterward.
 - EOF, SIGTERM and the two-second watchdog each restored the original brightness,
   automatic brightness flag and idle-dimming flag in a fixed-brightness check.
 - With automatic brightness initially enabled, the flag was restored. macOS can
