@@ -92,7 +92,9 @@ module Beacon
       FileUtils.rm_f(File.join(runtime, 'stop'))
       log = File.open(File.join(runtime, 'daemon.log'), 'a', 0600)
       begin
-        if File.file?(File.join(runtime, 'service-receipt.json'))
+        if ENV['AGENT_BEACON_BREW']
+          raise 'Could not start Homebrew service; run agent-beacon setup' unless system(ENV.fetch('AGENT_BEACON_BREW'), 'services', 'start', 'rynzh/tap/agent-beacon', out: log, err: log)
+        elsif File.file?(File.join(runtime, 'service-receipt.json'))
           raise 'Could not start managed controller service' unless system('/bin/launchctl', 'kickstart', "gui/#{Process.uid}/local.agent-beacon.controller", out: log, err: log)
         else
           pid = Process.spawn(RbConfig.ruby, SCRIPT, 'run', in: File::NULL, out: log, err: log, pgroup: true)
@@ -195,7 +197,11 @@ module Beacon
 
   def self.configure(agent, path, remove: false)
     raise ArgumentError, 'agent must be codex or claude' unless %w[codex claude].include?(agent)
-    command = [RbConfig.ruby, SCRIPT, 'hook', agent].shelljoin
+    command = if ENV['AGENT_BEACON_COMMAND']
+                [ENV.fetch('AGENT_BEACON_COMMAND'), 'hook', agent].shelljoin
+              else
+                [RbConfig.ruby, SCRIPT, 'hook', agent].shelljoin
+              end
     FileUtils.mkdir_p(File.dirname(path))
     File.open("#{path}.agent-beacon.lock", File::RDWR | File::CREAT, 0600) do |lock|
       lock.flock(File::LOCK_EX)

@@ -1,0 +1,45 @@
+name: bottles
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew tap rynzh/tap
+      - run: brew install --build-bottle rynzh/tap/agent-beacon
+      - run: brew test rynzh/tap/agent-beacon
+      - run: brew bottle --json --root-url="https://github.com/rynzh/homebrew-tap/releases/download/bottles-${{ github.run_id }}" rynzh/tap/agent-beacon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bottle-${{ matrix.os }}
+          path: '*.bottle.*'
+  publish:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: bottles
+      - run: brew tap rynzh/tap
+      - name: Merge bottles
+        run: brew bottle --merge --write --no-commit bottles/*.json
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "bottles-${{ github.run_id }}" bottles/*.tar.gz --title "Agent Beacon bottles" --notes "Precompiled packages tested on GitHub-hosted macOS runners."
+          cp "$(brew --repository rynzh/tap)/Formula/agent-beacon.rb" Formula/agent-beacon.rb
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Formula/agent-beacon.rb
+          git commit -m "Publish tested bottles"
+          git push

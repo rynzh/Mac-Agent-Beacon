@@ -1,0 +1,21 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+      - name: Package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash packaging/release.sh "${RELEASE_TAG#v}"
+      - name: Publish source and formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes --prerelease

@@ -1,4 +1,5 @@
 build/
+dist/
 .runtime/
 .debug-journal.md
 PLAN.md

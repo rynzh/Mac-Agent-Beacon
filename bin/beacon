@@ -2,8 +2,15 @@
 set -euo pipefail
 BEACON_BIN=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 export AGENT_BEACON_HOME="${AGENT_BEACON_HOME:-$(dirname -- "$(dirname -- "$BEACON_BIN")")}"
+if [ -n "${AGENT_BEACON_BREW:-}" ]; then
+  export AGENT_BEACON_HOME="${AGENT_BEACON_DATA_HOME:-$HOME/Library/Application Support/AgentBeacon}"
+fi
+BEACON_RUBY="${AGENT_BEACON_RUBY:-/usr/bin/ruby}"
+if [ "${1:-}" = setup ] || [ "${1:-}" = uninstall ]; then
+  exec "$BEACON_RUBY" "$BEACON_BIN/homebrew.rb" "$@"
+fi
 if [ "${1:-}" = service ]; then
   shift
-  exec /usr/bin/ruby "$BEACON_BIN/service.rb" "$@"
+  exec "$BEACON_RUBY" "$BEACON_BIN/service.rb" "$@"
 fi
-exec /usr/bin/ruby "$BEACON_BIN/agent-beacon.rb" "$@"
+exec "$BEACON_RUBY" "$BEACON_BIN/agent-beacon.rb" "$@"
