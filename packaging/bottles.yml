@@ -19,7 +19,7 @@ jobs:
       - name: Test bottle installation
         run: |
           brew uninstall agent-beacon
-          brew install ./*.bottle*.tar.gz
+          HOMEBREW_DEVELOPER=1 brew install ./*.bottle*.tar.gz
           brew test rynzh/tap/agent-beacon
       - uses: actions/upload-artifact@v4
         with:
