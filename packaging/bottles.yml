@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: bottle-release
+  cancel-in-progress: false
 jobs:
   build:
     strategy:
@@ -19,6 +22,7 @@ jobs:
       - name: Test bottle installation
         run: |
           brew uninstall agent-beacon
+          brew trust --formula rynzh/tap/agent-beacon
           HOMEBREW_DEVELOPER=1 brew install ./*.bottle*.tar.gz
           brew test rynzh/tap/agent-beacon
       - uses: actions/upload-artifact@v4
@@ -36,11 +40,16 @@ jobs:
           path: bottles
       - run: brew tap rynzh/tap
       - name: Merge bottles
-        run: brew bottle --merge --write --no-commit bottles/*.json
+        run: |
+          brew trust --formula rynzh/tap/agent-beacon
+          brew bottle --merge --write --no-commit bottles/*.json
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD:Formula/agent-beacon.rb)" = "$(git rev-parse origin/main:Formula/agent-beacon.rb)"
+          git merge --ff-only origin/main
           ruby -rjson -e 'Dir["bottles/*.json"].each { |p| JSON.parse(File.read(p)).each_value { |f| f.fetch("bottle").fetch("tags").each_value { |t| File.rename("bottles/" + t.fetch("local_filename"), "bottles/" + t.fetch("filename")) } } }'
           gh release create "bottles-${{ github.run_id }}" bottles/*.tar.gz --title "Agent Beacon bottles" --notes "Precompiled packages tested on GitHub-hosted macOS runners."
           cp "$(brew --repository rynzh/tap)/Formula/agent-beacon.rb" Formula/agent-beacon.rb
