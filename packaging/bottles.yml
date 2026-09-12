@@ -16,6 +16,11 @@ jobs:
       - run: brew install --build-bottle rynzh/tap/agent-beacon
       - run: brew test rynzh/tap/agent-beacon
       - run: brew bottle --json --root-url="https://github.com/rynzh/homebrew-tap/releases/download/bottles-${{ github.run_id }}" rynzh/tap/agent-beacon
+      - name: Test bottle installation
+        run: |
+          brew uninstall agent-beacon
+          brew install ./*.bottle*.tar.gz
+          brew test rynzh/tap/agent-beacon
       - uses: actions/upload-artifact@v4
         with:
           name: bottle-${{ matrix.os }}
@@ -36,6 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ruby -rjson -e 'Dir["bottles/*.json"].each { |p| JSON.parse(File.read(p)).each_value { |f| f.fetch("bottle").fetch("tags").each_value { |t| File.rename("bottles/" + t.fetch("local_filename"), "bottles/" + t.fetch("filename")) } } }'
           gh release create "bottles-${{ github.run_id }}" bottles/*.tar.gz --title "Agent Beacon bottles" --notes "Precompiled packages tested on GitHub-hosted macOS runners."
           cp "$(brew --repository rynzh/tap)/Formula/agent-beacon.rb" Formula/agent-beacon.rb
           git config user.name github-actions[bot]

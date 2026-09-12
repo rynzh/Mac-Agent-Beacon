@@ -32,7 +32,41 @@ Caps Lock, or change your agent's approval policy.
 - Temporary network retries remain solid; only a terminal interruption alerts.
 - Built for Codex Desktop, with lifecycle hooks shared with Codex CLI.
 
-## Requirements
+## Homebrew installation
+
+Install the preview release and configure Codex in one command:
+
+```sh
+brew install rynzh/tap/agent-beacon && agent-beacon setup
+```
+
+Homebrew manages Ruby automatically. Precompiled bottles target macOS 15 on
+Apple Silicon and Intel; check the [Tap build status](https://github.com/rynzh/homebrew-tap/actions)
+before installing. Without a compatible bottle, Homebrew may build from source.
+
+Then enable the LED helper in **System Settings → Privacy & Security → Input
+Monitoring**, using the path printed by setup, and trust Agent Beacon in Codex
+CLI's `/hooks`. Start a new Codex task to use the light.
+
+```sh
+agent-beacon status
+brew services restart agent-beacon
+brew upgrade agent-beacon
+agent-beacon setup
+```
+
+Run setup again after upgrading to restart the service. An updated helper may
+require renewed Input Monitoring authorization. To uninstall:
+
+```sh
+agent-beacon uninstall
+brew uninstall agent-beacon
+```
+
+Existing source installations must be removed or migrated first; setup stops if
+it detects the old service. See [Homebrew details](docs/HOMEBREW.md).
+
+## Source installation requirements
 
 - macOS with a supported built-in Apple keyboard and Caps Lock LED
 - Xcode Command Line Tools or Xcode
@@ -43,7 +77,7 @@ External and Magic Keyboards are not currently supported. Karabiner-Elements may
 block LED access if it exclusively grabs the built-in keyboard. If Caps Lock still
 controls capitalization or input sources, macOS may also update the same LED.
 
-## Install
+## Install from source (alternative)
 
 ### 1. Install Apple's command-line tools
 
