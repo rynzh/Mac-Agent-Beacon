@@ -2,11 +2,11 @@
 
 Use the Caps Lock LED on a MacBook as a status light for background Codex tasks.
 
-**Solid = working · Fast blinking = needs attention · Off = finished**
+**Solid = working · Fast blinking = needs attention · Slow blinking = just finished · Off = idle**
 
 Mac Agent Beacon runs locally and does not require an API key, cloud service,
 or Node.js. Homebrew is recommended; a source installer is also available.
-It controls only the LED: it does not press keys, remap
+It controls status lights only: it does not press keys, remap
 Caps Lock, or change your agent's approval policy.
 
 <p align="center">
@@ -25,13 +25,54 @@ Caps Lock, or change your agent's approval policy.
 | Working, automatically approved, or retrying | Solid |
 | Waiting for user approval or structured input | Fast blinking |
 | Quota exhausted, terminal network/permission error, or observer disconnected during active work | Fast blinking |
-| Finished or idle | Off |
+| Just finished, with no other work active | Slow blinking for 6 seconds |
+| Idle, after the completion indication expires | Off |
 
-- Attention takes priority when several tasks are active.
+- Attention takes priority when several tasks are active, followed by working,
+  then recent completion. A new task immediately replaces the completion blink.
 - The LED returns to solid as soon as an approval is resolved.
 - Ordinary text such as “reply approve and I will continue” is not inferred.
 - Temporary network retries remain solid; only a terminal interruption alerts.
 - Built for Codex Desktop, with lifecycle hooks shared with Codex CLI.
+
+### Optional whole-keyboard backlight alerts
+
+The built-in keyboard backlight can blink in the same phase as the Caps Lock LED
+when a task needs attention or has just finished. It is off by default. To enable it:
+
+```sh
+agent-beacon backlight inspect
+agent-beacon backlight on
+```
+
+For a source installation, replace `agent-beacon` with
+`"$HOME/Library/Application Support/AgentBeacon/app/bin/beacon"`.
+Use `backlight off` to disable it; a running controller applies the change without
+a restart. `backlight status` shows the saved preference, and `status` includes
+the active backlight output and any helper error.
+
+Attention flashes both lights on a 0.4-second cycle: pending approval/input,
+terminal failures, or observer disconnection during active work. Recent completion
+flashes both lights slowly (1 second on, 1 second off) for 6 seconds, then the LED
+turns off and normal keyboard illumination returns. Working and idle states leave
+normal keyboard illumination alone. Both outputs share one phase, starting lit
+on each state transition. Alert brightness is the current brightness or 35%, whichever
+is higher; the dark phase is zero. The display brightness is never changed.
+
+The helper snapshots brightness, automatic brightness and idle dimming before
+each alert. It temporarily pauses automatic brightness and idle dimming, then
+restores all three settings when the alert ends, the feature is disabled, stdin
+closes, or it receives SIGINT/SIGTERM/SIGHUP. A two-second input watchdog restores
+the settings if the controller stalls. Changes made manually during an alert are
+replaced by the saved settings when the alert ends. A force-killed helper or power
+loss cannot perform cleanup; use the macOS keyboard brightness controls if needed.
+If automatic brightness was enabled, macOS can adjust the restored brightness
+again immediately according to the ambient light.
+
+This optional helper uses Apple's private CoreBrightness API, which can change
+between macOS releases. An unavailable or failing backlight helper is reported
+without stopping the Caps Lock output. It supports a built-in backlit keyboard,
+not external RGB keyboards, and is never started in simulation mode.
 
 ## Quick start: Homebrew (recommended)
 
