@@ -42,7 +42,7 @@ class BacklightTest < Minitest::Test
 
   def test_only_opted_in_attention_starts_helper_and_follows_the_same_phase
     @light.update('attention', '1', enabled: false)
-    %w[working idle done].each { |mode| @light.update(mode, '1', enabled: true) }
+    %w[working idle].each { |mode| @light.update(mode, '1', enabled: true) }
     refute File.exist?(@trace)
     %w[1 1 0 0 1].each { |phase| @light.update('attention', phase, enabled: true) }
     assert @light.status['active']
@@ -65,6 +65,21 @@ class BacklightTest < Minitest::Test
     assert_equal %w[start 1 restore], File.readlines(@trace, chomp: true)
   end
 
+  def test_completion_flashes_then_restores_when_idle
+    %w[1 0 1 0].each { |phase| @light.update('done', phase, enabled: true) }
+    assert @light.status['active']
+    @light.update('idle', '0', enabled: true)
+    assert_equal %w[start 1 0 1 0 restore], File.readlines(@trace, chomp: true)
+    refute @light.status['active']
+  end
+
+  def test_attention_to_completion_keeps_original_brightness_snapshot
+    @light.update('attention', '0', enabled: true)
+    @light.update('done', '1', enabled: true)
+    @light.update('working', '1', enabled: true)
+    assert_equal %w[start 0 1 restore], File.readlines(@trace, chomp: true)
+  end
+
   def test_unavailable_backlight_is_contained_and_not_retried_every_phase
     File.write(@helper, "#!#{RbConfig.ruby}\nFile.open(#{@trace.inspect}, 'a') { |f| f.puts('failed') }; exit 1\n")
     capture_io do
@@ -82,7 +97,7 @@ class BacklightTest < Minitest::Test
     File.write(@helper, "#!#{RbConfig.ruby}\ntrap('TERM') {}; sleep 60\n")
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     capture_io { @light.update('attention', '1', enabled: true) }
-    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 4
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
     assert @light.status['error']
     refute @light.status['active']
   end

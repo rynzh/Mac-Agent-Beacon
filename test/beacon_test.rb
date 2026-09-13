@@ -43,6 +43,45 @@ class BeaconTest < Minitest::Test
     assert_equal 'working', Beacon.mode(snapshot)
   end
 
+  def test_light_cadences_and_multi_task_priority
+    assert_equal %w[1 1 0 1], [0, 0.19, 0.21, 0.41].map { |t| Beacon.light_command('attention', t) }
+    assert_equal %w[1 1 0 0 1], [0, 0.99, 1.01, 1.99, 2.01].map { |t| Beacon.light_command('done', t) }
+    Beacon.event('codex', 'completed', 'done')
+    assert_equal 'done', Beacon.mode(snapshot)
+    Beacon.event('codex', 'busy', 'working')
+    assert_equal 'working', Beacon.mode(snapshot)
+    Beacon.event('codex', 'waiting', 'attention')
+    assert_equal 'attention', Beacon.mode(snapshot)
+  end
+
+  def test_completed_controller_slow_flashes_then_expires_to_idle
+    environment = {'AGENT_BEACON_HOME' => @directory, 'AGENT_BEACON_SIMULATE' => '1'}
+    path = File.join(@directory, 'output.json')
+    wait_for = lambda do |mode, command|
+      Timeout.timeout(3) do
+        loop do
+          output = JSON.parse(File.read(path)) if File.exist?(path)
+          break if output && output['mode'] == mode && output['command'] == command
+          sleep 0.02
+        end
+      end
+    end
+    begin
+      _, error, result = Open3.capture3(environment, RbConfig.ruby, Beacon::SCRIPT, 'event', 'test', 'finished', 'done')
+      assert result.success?, error
+      wait_for.call('done', '1')
+      sleep 0.45
+      assert_equal '1', JSON.parse(File.read(path))['command'], 'completion must not use the fast attention cadence'
+      wait_for.call('done', '0')
+      Beacon.transaction { |state| state.each_value { |s| s['at'] = Time.now.to_f - Beacon::DONE_SECONDS } }
+      wait_for.call('idle', '0')
+      assert_empty JSON.parse(File.read(File.join(@directory, 'state.json')))
+    ensure
+      Open3.capture3(environment, RbConfig.ruby, Beacon::SCRIPT, 'stop')
+      40.times { break unless File.exist?(File.join(@directory, 'ready')); sleep 0.05 }
+    end
+  end
+
   def test_hooks_do_not_store_prompts
     Beacon.hook('codex', JSON.generate({hook_event_name: 'UserPromptSubmit', session_id: 'a', prompt: 'private words'}))
     refute_includes File.read(File.join(@directory, 'state.json')), 'private words'

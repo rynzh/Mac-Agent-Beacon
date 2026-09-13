@@ -27,14 +27,14 @@ module Beacon
     end
 
     def update(mode, phase, enabled:)
-      if !enabled || mode != 'attention'
+      if !enabled || !%w[attention done].include?(mode)
         close
         @error = nil
       elsif !@error
         unless @writer
           @writer, @reader, @process = Open3.popen2(@helper, 'serve')
           @writer.sync = true
-          raise 'backlight helper did not become ready' unless Timeout.timeout(1) { @reader.gets } == "ready\n"
+          raise 'backlight helper did not become ready' unless Timeout.timeout(2) { @reader.gets } == "ready\n"
         end
         if phase != @previous
           @writer.write(phase)

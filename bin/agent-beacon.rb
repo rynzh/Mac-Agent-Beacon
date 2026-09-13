@@ -13,6 +13,7 @@ module Beacon
   SCRIPT = File.join(ROOT, 'bin', 'agent-beacon.rb')
   HELPER = File.join(ROOT, 'build', 'beacon-led')
   STATES = %w[working attention done idle error].freeze
+  DONE_SECONDS = 6
   EVENTS = {
     'UserPromptSubmit' => 'working', 'PreToolUse' => 'working',
     'PostToolUse' => 'working', 'PermissionRequest' => 'attention',
@@ -60,11 +61,20 @@ module Beacon
   end
 
   def self.mode(state, now = Time.now.to_f)
-    active = state.values.select { |s| now - s.fetch('at') < (s['status'] == 'done' ? 6 : 43_200) }
+    active = state.values.select { |s| now - s.fetch('at') < (s['status'] == 'done' ? DONE_SECONDS : 43_200) }
     return 'attention' if active.any? { |s| %w[attention error].include?(s['status']) }
     return 'working' if active.any? { |s| s['status'] == 'working' }
     return 'done' if active.any? { |s| s['status'] == 'done' }
     'idle'
+  end
+
+  def self.light_command(mode, elapsed)
+    case mode
+    when 'working' then '1'
+    when 'attention' then elapsed % 0.4 < 0.2 ? '1' : '0'
+    when 'done' then elapsed % 2.0 < 1.0 ? '1' : '0'
+    else '0'
+    end
   end
 
   def self.hook(agent, input)
@@ -123,6 +133,7 @@ module Beacon
       File.write(File.join(runtime, 'ready'), Process.pid.to_s)
       previous = nil
       previous_mode = nil
+      phase_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       previous_backlight = nil
       backlight = Backlight.new
       watcher = nil
@@ -162,15 +173,12 @@ module Beacon
         end
         until stopping || File.exist?(File.join(runtime, 'stop'))
           current = transaction do |state|
-            state.delete_if { |_, s| Time.now.to_f - s['at'] >= (s['status'] == 'done' ? 6 : 43_200) }
+            state.delete_if { |_, s| Time.now.to_f - s['at'] >= (s['status'] == 'done' ? DONE_SECONDS : 43_200) }
             mode(state)
           end
           phase = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          command = case current
-                    when 'working' then '1'
-                    when 'attention' then phase % 0.4 < 0.2 ? '1' : '0'
-                    else '0'
-                    end
+          phase_started = phase if current != previous_mode
+          command = light_command(current, phase - phase_started)
           enabled = Backlight.enabled?(runtime)
           if command != previous || current != previous_mode
             output.write(command) if output
@@ -312,7 +320,7 @@ module Beacon
       configure(agent, path, remove: command == 'uninstall-hooks')
       puts "#{command}: #{path}"
     when nil, 'help', '--help'
-      puts "Agent Beacon: status lights; keyboard mappings are never changed.\nCommands: doctor, demo, start, stop, status, clear\n          backlight on|off|status|inspect (optional attention flashes)\n          event AGENT SESSION working|attention|done|idle|error [TURN]\n          install-hooks|uninstall-hooks codex|claude [CONFIG_PATH]\nEnvironment: AGENT_BEACON_HOME, AGENT_BEACON_SIMULATE=1 (test only)"
+      puts "Agent Beacon: status lights; keyboard mappings are never changed.\nCommands: doctor, demo, start, stop, status, clear\n          backlight on|off|status|inspect (optional attention/completion flashes)\n          event AGENT SESSION working|attention|done|idle|error [TURN]\n          install-hooks|uninstall-hooks codex|claude [CONFIG_PATH]\nEnvironment: AGENT_BEACON_HOME, AGENT_BEACON_SIMULATE=1 (test only)"
     else
       raise ArgumentError, 'Unknown command; use --help'
     end
