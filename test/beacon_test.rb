@@ -216,6 +216,7 @@ class BeaconTest < Minitest::Test
     end
     request = read_message.call
     assert_equal 'initialize', request['method']
+    assert_equal 'renderer', request.dig('params', 'clientType')
     send_message.call({'type' => 'response', 'method' => 'initialize', 'requestId' => request['requestId'],
                        'resultType' => 'success', 'result' => {'clientId' => 'observer'}})
     observer.poll
@@ -246,6 +247,18 @@ class BeaconTest < Minitest::Test
     observer.close if observer
     peer.close if peer && !peer.closed?
     server.close if server
+  end
+
+  def test_live_maps_runtime_session_to_desktop_conversation
+    conversation = '01a079d9-216f-7012-8a4b-5ebdd7b8e771'
+    session = '01a0c7b4-2e24-7873-a617-02e2d67f265d'
+    directory = File.join(@directory, '.codex', 'sessions', '2026', '09', '22')
+    FileUtils.mkdir_p(directory)
+    File.write(File.join(directory, "rollout-2026-09-22T16-01-09-#{conversation}_#{session}.jsonl"), "{}\n")
+    observer = Beacon::CodexLive.new('/missing')
+    Dir.stub(:home, @directory) { assert_equal conversation, observer.conversation_id(session) }
+  ensure
+    observer.close if observer
   end
 
   def test_codex_permission_request_is_not_evidence_of_user_waiting
@@ -320,6 +333,21 @@ class BeaconTest < Minitest::Test
     assert_equal first, JSON.parse(File.read(path))
     Beacon.configure('claude', path, remove: true)
     assert_equal original, JSON.parse(File.read(path))
+  end
+
+  def test_install_replaces_obsolete_agent_beacon_hook_path
+    path = File.join(@directory, 'hooks.json')
+    legacy = '/usr/bin/ruby /Users/example/Library/Application\\ Support/AgentBeacon/app/bin/agent-beacon.rb hook codex'
+    config = {'hooks' => {'Stop' => [{'hooks' => [
+      {'type' => 'command', 'command' => legacy},
+      {'type' => 'command', 'command' => 'existing-tool'}
+    ]}]}}
+    File.write(path, JSON.generate(config))
+    Beacon.configure('codex', path)
+    commands = JSON.parse(File.read(path)).dig('hooks', 'Stop').flat_map { |group| group['hooks'] }.map { |hook| hook['command'] }
+    refute_includes commands, legacy
+    assert_includes commands, 'existing-tool'
+    assert_equal 1, commands.count { |command| Beacon.agent_beacon_hook?(command, 'codex') }
   end
 
   def test_malformed_config_not_overwritten

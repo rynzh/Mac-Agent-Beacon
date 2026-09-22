@@ -124,30 +124,32 @@ module Beacon
       @buffer = ''.b
       @subscriptions = {}
       @owners = {}
+      @foreign_followers = Hash.new { |hash, key| hash[key] = [] }
+      @conversation_by_session = {}
+      @desired_sessions = []
+      @initialized_sessions = []
       @retry_at = 0
       @scan_at = 0
       @client = nil
       @initialize_deadline = nil
       @initialize_id = nil
-      @reconcile_at = 0
     end
 
     def poll
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      if now >= @reconcile_at
-        @reconcile_at = now + 1
-        Beacon.transaction do |records|
-          sessions = records.values.select { |s| s['agent'] == 'codex' }.map { |s| s['session'] }
-          records.delete_if { |_, s| s['agent'] == 'codex-live' && !sessions.include?(s['session']) }
-        end
+      hook_sessions = Beacon.transaction do |records|
+        records.values.select { |state| state['agent'] == 'codex' }.map { |state| state['session'] }
       end
+      @desired_sessions = (hook_sessions.map { |session| conversation_id(session) } + @foreign_followers.keys).uniq
+      reconnect if @client && (@desired_sessions - @initialized_sessions).any?
       connect if !@socket && now >= @retry_at
+      drain if @socket
+      reconcile(@desired_sessions)
       return unless @socket
-      drain
       raise 'IPC initialization timeout' if !@client && @initialize_deadline && now >= @initialize_deadline
       if @client && now >= @scan_at
         @scan_at = now + 1
-        sessions = Beacon.transaction { |records| records.values.select { |s| s['agent'] == 'codex' }.map { |s| s['session'] } }
+        sessions = @desired_sessions
         (@subscriptions.keys - sessions).each do |session|
           follow(session, false)
           @subscriptions.delete(session)
@@ -180,7 +182,25 @@ module Beacon
       @initialize_deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
       @initialize_id = SecureRandom.uuid
       send_message('type' => 'request', 'requestId' => @initialize_id, 'method' => 'initialize',
-                   'version' => 0, 'params' => {'clientType' => 'agent-beacon'})
+                   'version' => 0, 'params' => {'clientType' => 'renderer'})
+    end
+
+    def conversation_id(session)
+      return @conversation_by_session[session] if @conversation_by_session.key?(session)
+      return session unless session.match?(/\A[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/i)
+      pattern = File.join(Dir.home, '.codex', 'sessions', '*', '*', '*', "*_#{session}.jsonl")
+      path = Dir.glob(pattern).max_by { |candidate| File.mtime(candidate) }
+      match = path && File.basename(path).match(/-([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})_#{Regexp.escape(session)}\.jsonl\z/i)
+      return session unless match
+      @conversation_by_session[session] = match[1]
+    rescue SystemCallError
+      session
+    end
+
+    def reconcile(sessions)
+      Beacon.transaction do |records|
+        records.delete_if { |_, state| state['agent'] == 'codex-live' && !sessions.include?(state['session']) }
+      end
     end
 
     def send_message(message)
@@ -218,10 +238,26 @@ module Beacon
         @client = message.dig('result', 'clientId')
         raise 'invalid IPC client ID' unless @client.is_a?(String) && !@client.empty?
         @initialize_deadline = nil
+        @initialized_sessions = @desired_sessions.dup
+        @initialized_sessions.each do |session|
+          follow(session, true)
+          @subscriptions[session] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        end
       elsif message['type'] == 'broadcast'
         params = message['params']
         return unless params.is_a?(Hash)
         case message['method']
+        when 'thread-stream-following-changed'
+          session = params['conversationId']
+          source = message['sourceClientId']
+          return unless params['hostId'] == 'local' && source.is_a?(String) && source != @client && session.is_a?(String)
+          followers = @foreign_followers[session]
+          if params['following']
+            followers << source unless followers.include?(source)
+          else
+            followers.delete(source)
+            @foreign_followers.delete(session) if followers.empty?
+          end
         when 'thread-stream-state-changed'
           session = params['conversationId']
           return unless params['hostId'] == 'local' && @subscriptions.key?(session)
@@ -254,6 +290,19 @@ module Beacon
       @retry_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
     end
 
+    def reconnect
+      @socket.close if @socket && !@socket.closed?
+      @socket = nil
+      @client = nil
+      @initialize_deadline = nil
+      @initialize_id = nil
+      @buffer = ''.b
+      @subscriptions.clear
+      @owners.clear
+      @initialized_sessions.clear
+      @retry_at = 0
+    end
+
     def close
       @socket.close if @socket && !@socket.closed?
       @socket = nil
@@ -263,6 +312,8 @@ module Beacon
       @buffer = ''.b
       @subscriptions.clear
       @owners.clear
+      @foreign_followers.clear
+      @initialized_sessions.clear
     end
   end
 end
