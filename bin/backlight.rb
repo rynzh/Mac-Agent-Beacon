@@ -54,12 +54,9 @@ module Beacon
 
     def close
       @writer.close if @writer && !@writer.closed?
-      if @process && !@process.join(0.5)
+      if @process && !@process.join(0.25)
         Process.kill('TERM', @process.pid) rescue Errno::ESRCH
-        unless @process.join(0.5)
-          Process.kill('KILL', @process.pid) rescue Errno::ESRCH
-          @process.join(0.5)
-        end
+        warn 'Agent Beacon optional backlight: helper is still restoring in the background' unless @process.join(2.25)
       end
       @reader.close if @reader && !@reader.closed?
     ensure

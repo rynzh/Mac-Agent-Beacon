@@ -94,12 +94,32 @@ class BacklightTest < Minitest::Test
   end
 
   def test_a_hung_helper_has_bounded_startup_and_shutdown
-    File.write(@helper, "#!#{RbConfig.ruby}\ntrap('TERM') {}; sleep 60\n")
+    File.write(@helper, "#!#{RbConfig.ruby}\nsleep 60\n")
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     capture_io { @light.update('attention', '1', enabled: true) }
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
     assert @light.status['error']
     refute @light.status['active']
+  end
+
+  def test_delayed_restore_is_not_force_killed
+    File.write(@helper, <<~RUBY)
+      #!#{RbConfig.ruby}
+      STDOUT.sync = true
+      trap('TERM') {}
+      puts 'ready'
+      STDIN.read(1)
+      puts 'ok'
+      STDIN.read
+      sleep 0.8
+      File.write(#{@trace.inspect}, 'restored')
+    RUBY
+    File.chmod(0755, @helper)
+    @light.update('attention', '1', enabled: true)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    @light.close
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.7
+    assert_equal 'restored', File.read(@trace)
   end
 
   def test_simulation_never_starts_real_backlight_even_when_enabled

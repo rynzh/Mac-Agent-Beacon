@@ -9,6 +9,10 @@ module Persistence
   DEVICE = {'identifiers' => {'vendor_id' => 0, 'product_id' => 0, 'is_keyboard' => true, 'is_pointing_device' => false}, 'ignore' => true}.freeze
   MAPPING = [[0x39, 0xe3], [0xe7, 0xe0], [0xe6, 0x6e]].map { |src, dst| {'HIDKeyboardModifierMappingSrc' => 0x700000000 | src, 'HIDKeyboardModifierMappingDst' => 0x700000000 | dst} }.freeze
   LABELS = %w[local.agent-beacon.mapping local.agent-beacon.controller].freeze
+  RUNTIME_FILES = %w[
+    bin/agent-beacon.rb bin/backlight.rb bin/codex-status.rb bin/codex-live.rb
+    bin/persistence.rb build/beacon-led build/beacon-backlight THIRD_PARTY_NOTICES.md
+  ].freeze
 
   def self.atomic(path, text)
     FileUtils.mkdir_p(File.dirname(path), mode: 0700)
@@ -46,6 +50,15 @@ module Persistence
     raise 'System mapping failed' unless system('/usr/bin/hidutil', 'property', '--matching', JSON.generate(MATCH), '--set', JSON.generate({'UserKeyMapping' => MAPPING}))
   end
 
+  def self.copy_runtime(application)
+    %w[bin build].each { |directory| FileUtils.mkdir_p(File.join(application, directory), mode: 0700) }
+    RUNTIME_FILES.each do |relative|
+      source = File.join(Beacon::ROOT, relative)
+      destination = File.join(application, relative)
+      FileUtils.cp(source, destination) unless source == destination
+    end
+  end
+
   def self.main(action)
     return repair if action == 'repair'
     config_path = File.join(Dir.home, '.config/karabiner/karabiner.json')
@@ -55,12 +68,7 @@ module Persistence
     if action == 'deploy'
       raise 'Install first' unless File.exist?(manifest_path)
       application = File.join(Beacon.runtime, 'app')
-      %w[bin build].each { |directory| FileUtils.mkdir_p(File.join(application, directory), mode: 0700) }
-      %w[bin/agent-beacon.rb bin/codex-status.rb bin/codex-live.rb bin/persistence.rb build/beacon-led THIRD_PARTY_NOTICES.md].each do |relative|
-        source = File.join(Beacon::ROOT, relative)
-        destination = File.join(application, relative)
-        FileUtils.cp(source, destination) unless source == destination
-      end
+      copy_runtime(application)
       commands = [[RbConfig.ruby, File.join(application, 'bin/persistence.rb'), 'repair'], [RbConfig.ruby, File.join(application, 'bin/agent-beacon.rb'), 'run']]
       LABELS.each_with_index do |label, index|
         system('/bin/launchctl', 'bootout', "#{domain}/#{label}", out: File::NULL, err: File::NULL)

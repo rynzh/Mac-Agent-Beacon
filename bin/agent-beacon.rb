@@ -68,9 +68,16 @@ module Beacon
     'idle'
   end
 
-  def self.light_command(mode, elapsed)
+  def self.caps_command(mode, elapsed)
     case mode
     when 'working' then '1'
+    when 'attention' then elapsed % 0.4 < 0.2 ? '1' : '0'
+    else '0'
+    end
+  end
+
+  def self.backlight_command(mode, elapsed)
+    case mode
     when 'attention' then elapsed % 0.4 < 0.2 ? '1' : '0'
     when 'done' then elapsed % 2.0 < 1.0 ? '1' : '0'
     else '0'
@@ -178,7 +185,9 @@ module Beacon
           end
           phase = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           phase_started = phase if current != previous_mode
-          command = light_command(current, phase - phase_started)
+          elapsed = phase - phase_started
+          command = caps_command(current, elapsed)
+          backlight_phase = backlight_command(current, elapsed)
           enabled = Backlight.enabled?(runtime)
           if command != previous || current != previous_mode
             output.write(command) if output
@@ -187,7 +196,7 @@ module Beacon
           backlight_status = if simulation
                                {'enabled' => enabled, 'active' => false, 'error' => nil, 'simulated' => true}
                              else
-                               backlight.update(current, command, enabled: enabled).merge('simulated' => false)
+                               backlight.update(current, backlight_phase, enabled: enabled).merge('simulated' => false)
                              end
           if command != previous || current != previous_mode || backlight_status != previous_backlight
             File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, backlight: backlight_status, at: Time.now.to_f }))

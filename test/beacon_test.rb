@@ -44,8 +44,9 @@ class BeaconTest < Minitest::Test
   end
 
   def test_light_cadences_and_multi_task_priority
-    assert_equal %w[1 1 0 1], [0, 0.19, 0.21, 0.41].map { |t| Beacon.light_command('attention', t) }
-    assert_equal %w[1 1 0 0 1], [0, 0.99, 1.01, 1.99, 2.01].map { |t| Beacon.light_command('done', t) }
+    assert_equal %w[1 1 0 1], [0, 0.19, 0.21, 0.41].map { |t| Beacon.caps_command('attention', t) }
+    assert_equal %w[0 0 0 0 0], [0, 0.99, 1.01, 1.99, 2.01].map { |t| Beacon.caps_command('done', t) }
+    assert_equal %w[1 1 0 0 1], [0, 0.99, 1.01, 1.99, 2.01].map { |t| Beacon.backlight_command('done', t) }
     Beacon.event('codex', 'completed', 'done')
     assert_equal 'done', Beacon.mode(snapshot)
     Beacon.event('codex', 'busy', 'working')
@@ -54,7 +55,7 @@ class BeaconTest < Minitest::Test
     assert_equal 'attention', Beacon.mode(snapshot)
   end
 
-  def test_completed_controller_slow_flashes_then_expires_to_idle
+  def test_completed_controller_keeps_caps_off_then_expires_to_idle
     environment = {'AGENT_BEACON_HOME' => @directory, 'AGENT_BEACON_SIMULATE' => '1'}
     path = File.join(@directory, 'output.json')
     wait_for = lambda do |mode, command|
@@ -69,10 +70,9 @@ class BeaconTest < Minitest::Test
     begin
       _, error, result = Open3.capture3(environment, RbConfig.ruby, Beacon::SCRIPT, 'event', 'test', 'finished', 'done')
       assert result.success?, error
-      wait_for.call('done', '1')
-      sleep 0.45
-      assert_equal '1', JSON.parse(File.read(path))['command'], 'completion must not use the fast attention cadence'
       wait_for.call('done', '0')
+      sleep 1.1
+      assert_equal '0', JSON.parse(File.read(path))['command'], 'completion must leave the Caps Lock LED off'
       Beacon.transaction { |state| state.each_value { |s| s['at'] = Time.now.to_f - Beacon::DONE_SECONDS } }
       wait_for.call('idle', '0')
       assert_empty JSON.parse(File.read(File.join(@directory, 'state.json')))

@@ -25,28 +25,21 @@ Coverage includes:
 
 ## Hardware check
 
-Verified on macOS 27.0 (26A428), MacBookPro18,3, with the built-in Apple keyboard.
-Karabiner remained running for other devices; its ownership of the built-in
-keyboard had already been released with the user's two mappings retained through
-native macOS mapping. This PR does not configure or alter those mappings.
+Before a release, repeat this checklist on a supported MacBook:
 
-- The actual brightness readback followed both on/off phases.
-- Twenty stable samples of the installed controller's Caps Lock phase and
-  CoreBrightness readback matched. Both outputs were real, not simulated.
-- The user visually confirmed synchronized whole-keyboard/Caps Lock blinking
-  during a ten-second test and normal backlight restoration afterward.
-- Completion: 46 stable hardware samples matched both lights. Observed phase
-  intervals were 0.94–1.10 seconds; after six seconds the controller expired to
-  idle, turned the LED off, and restored the backlight sensor/dimming settings.
-- EOF, SIGTERM and the two-second watchdog each restored the original brightness,
-  automatic brightness flag and idle-dimming flag in a fixed-brightness check.
-- With automatic brightness initially enabled, the flag was restored. macOS can
-  immediately recalculate brightness from ambient light, so an exact persistent
-  brightness match is only asserted with automatic brightness initially disabled.
+- Record brightness, automatic-brightness and idle-dimming state with
+  `agent-beacon backlight inspect`.
+- Confirm an attention event blinks the Caps Lock LED and keyboard backlight in
+  phase, then restores normal illumination when the event resolves.
+- Confirm a completion event keeps the Caps Lock LED off while the optional
+  keyboard backlight slow-blinks for six seconds.
+- Confirm EOF, SIGTERM and the two-second watchdog restore the recorded settings.
+- Re-run the check with automatic brightness both enabled and disabled. macOS may
+  recalculate brightness immediately when automatic brightness is restored.
 
-No reboot, power-loss, force-killed helper, Intel hardware, or external keyboard
-test is claimed. SIGKILL and power loss cannot run restoration code. CoreBrightness
-is a private interface and still needs testing on additional macOS versions.
+Record the macOS version and Mac model with release evidence. CoreBrightness is a
+private interface and needs testing across macOS releases. Power loss, SIGKILL,
+Intel hardware and external keyboards remain unsupported validation scenarios.
 
 To reproduce a short visual check after enabling backlight alerts, inject an
 explicit test event and always remove that same test session afterward:
