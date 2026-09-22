@@ -195,6 +195,14 @@ module Beacon
     names.to_h { |name| [name, [{ 'hooks' => [{ 'type' => 'command', 'command' => command, 'timeout' => 3 }] }]] }
   end
 
+  def self.agent_beacon_hook?(value, agent)
+    return false unless value.is_a?(String)
+    arguments = Shellwords.split(value)
+    arguments.last(2) == ['hook', agent] && %w[agent-beacon agent-beacon.rb].include?(File.basename(arguments[-3].to_s))
+  rescue ArgumentError
+    false
+  end
+
   def self.configure(agent, path, remove: false)
     raise ArgumentError, 'agent must be codex or claude' unless %w[codex claude].include?(agent)
     command = if ENV['AGENT_BEACON_COMMAND']
@@ -214,7 +222,9 @@ module Beacon
         raise ArgumentError, 'hook groups must be arrays' unless groups.is_a?(Array)
         groups.each do |group|
           raise ArgumentError, 'invalid hook group' unless group.is_a?(Hash) && group['hooks'].is_a?(Array)
-          group['hooks'].reject! { |h| h.is_a?(Hash) && h['command'] == command }
+          group['hooks'].reject! do |hook|
+            hook.is_a?(Hash) && (hook['command'] == command || agent_beacon_hook?(hook['command'], agent))
+          end
         end
         groups.reject! { |g| g['hooks'].empty? }
       end
