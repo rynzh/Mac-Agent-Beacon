@@ -7,6 +7,7 @@ module Beacon
       @path = path
       @since = since
       @seen = {}
+      @startup_reconciled = false
     end
 
     def self.failure_reason(code)
@@ -22,10 +23,27 @@ module Beacon
 
     def poll
       return unless File.file?(@path)
+      startup_sessions = if @startup_reconciled
+                           []
+                         else
+                           Beacon.transaction do |state|
+                             state.values.map do |record|
+                               session = record['session']
+                               session if record['agent'] == 'codex' && record['status'] == 'working' &&
+                                          session.is_a?(String) && session.size <= 200
+                             end.compact.uniq
+                           end
+                         end
+      startup_filter = if startup_sessions.empty?
+                         ''
+                       else
+                         values = startup_sessions.map { |session| "'#{session.gsub("'", "''")}'" }.join(',')
+                         " OR t.thread_id IN (#{values})"
+                       end
       sql = <<~SQL
         SELECT t.thread_id,t.turn_id,t.status,t.started_at,t.completed_at,t.error_json
         FROM thread_turns t
-        WHERE (t.started_at >= #{@since.to_i} OR t.completed_at >= #{@since.to_i})
+        WHERE (t.started_at >= #{@since.to_i} OR t.completed_at >= #{@since.to_i}#{startup_filter})
         AND NOT EXISTS (SELECT 1 FROM thread_turns newer
           WHERE newer.thread_id=t.thread_id AND newer.rollout_ordinal>t.rollout_ordinal)
       SQL
@@ -33,6 +51,7 @@ module Beacon
       raise "Codex status database unavailable: #{err.strip}" unless result.success?
       rows = out.strip.empty? ? [] : JSON.parse(out)
       rows.each { |row| apply(row) }
+      @startup_reconciled = true
     end
 
     def apply(row)

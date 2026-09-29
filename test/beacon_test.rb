@@ -355,6 +355,35 @@ class BeaconTest < Minitest::Test
     assert_equal 'working', Beacon.mode(snapshot)
   end
 
+  def test_codex_database_poll_reconciles_persisted_working_turn_completed_before_startup
+    database = File.join(@directory, 'history.sqlite')
+    sql = "CREATE TABLE thread_turns(thread_id TEXT, turn_id TEXT, status TEXT, started_at INTEGER, completed_at INTEGER, error_json TEXT, rollout_ordinal INTEGER); " \
+          "INSERT INTO thread_turns VALUES('stale','old','completed',1,2,NULL,1);"
+    _, _, result = Open3.capture3('/usr/bin/sqlite3', database, sql)
+    assert result.success?
+    Beacon.event('codex', 'stale', 'working', 'old')
+
+    Beacon::CodexStatus.new(database, since: 10).poll
+
+    assert_equal 'done', Beacon.mode(snapshot),
+                 'a turn completed before controller startup must not keep the Caps Lock LED on'
+    assert_equal '0', Beacon.caps_command(Beacon.mode(snapshot), 0)
+  end
+
+  def test_codex_database_poll_preserves_turn_running_before_startup
+    database = File.join(@directory, 'history.sqlite')
+    sql = "CREATE TABLE thread_turns(thread_id TEXT, turn_id TEXT, status TEXT, started_at INTEGER, completed_at INTEGER, error_json TEXT, rollout_ordinal INTEGER); " \
+          "INSERT INTO thread_turns VALUES('long-task','old','inProgress',1,NULL,NULL,1);"
+    _, _, result = Open3.capture3('/usr/bin/sqlite3', database, sql)
+    assert result.success?
+    Beacon.event('codex', 'long-task', 'working', 'old')
+
+    Beacon::CodexStatus.new(database, since: 10).poll
+
+    assert_equal 'working', Beacon.mode(snapshot),
+                 'a turn already running at controller startup must keep the Caps Lock LED on'
+  end
+
   def test_concurrent_event_writers
     pids = 8.times.map { |i| fork { Beacon.event('test', i.to_s, 'working'); exit! 0 } }
     pids.each { |pid| Process.wait(pid) }

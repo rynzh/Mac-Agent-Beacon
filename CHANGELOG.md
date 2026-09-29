@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Reconcile persisted Codex working sessions with the latest turn status when
+  the controller starts, preventing completed tasks from leaving the LED on.
 - Add opt-in whole-keyboard backlight alerts, synchronized with the Caps Lock
   attention and completion phases, with brightness/auto-dimming restoration and optional-output
   failure isolation. Enable with `agent-beacon backlight on`.
