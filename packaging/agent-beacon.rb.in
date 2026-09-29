@@ -14,7 +14,7 @@ class AgentBeacon < Formula
     (bin/"agent-beacon").write <<~SH
       #!/bin/bash
       export AGENT_BEACON_BREW="#{HOMEBREW_PREFIX}/bin/brew"
-      export AGENT_BEACON_RUBY="#{Formula["ruby"].opt_bin}/ruby"
+      export AGENT_BEACON_RUBY="#{formula_opt_bin("ruby")}/ruby"
       export AGENT_BEACON_COMMAND="#{opt_bin}/agent-beacon"
       exec "#{opt_libexec}/bin/beacon" "$@"
     SH
