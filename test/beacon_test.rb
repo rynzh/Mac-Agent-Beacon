@@ -55,6 +55,30 @@ class BeaconTest < Minitest::Test
     assert_equal 'attention', Beacon.mode(snapshot)
   end
 
+  def test_working_light_is_refreshed_without_refreshing_idle_light
+    refute Beacon.led_write_due?('working', '1', 'working', '1', 4.99)
+    assert Beacon.led_write_due?('working', '1', 'working', '1', 5.0)
+    refute Beacon.led_write_due?('idle', '0', 'idle', '0', 60.0)
+    assert Beacon.led_write_due?('idle', '0', 'working', '1', 0.0)
+  end
+
+  def test_controller_exit_uses_a_fresh_helper_to_restore_the_led
+    helper = File.join(@directory, 'fake-led-helper')
+    File.write(helper, <<~RUBY)
+      #!/usr/bin/ruby
+      STDOUT.sync = true
+      puts 'ready'
+      command = STDIN.read(1)
+      File.write(__FILE__ + '.command', command)
+      puts 'ok'
+      STDIN.read
+    RUBY
+    File.chmod(0755, helper)
+
+    assert Beacon.restore_led(helper)
+    assert_equal 'r', File.read("#{helper}.command")
+  end
+
   def test_completed_controller_keeps_caps_off_then_expires_to_idle
     environment = {'AGENT_BEACON_HOME' => @directory, 'AGENT_BEACON_SIMULATE' => '1'}
     path = File.join(@directory, 'output.json')
@@ -105,6 +129,20 @@ class BeaconTest < Minitest::Test
     assert_equal '/bin/launchctl', calls.first.first
     assert_includes calls.first, 'kickstart'
     assert_equal 1, calls.size
+  end
+
+  def test_homebrew_start_restarts_a_loaded_but_exited_service
+    previous_brew = ENV['AGENT_BEACON_BREW']
+    ENV['AGENT_BEACON_BREW'] = '/opt/homebrew/bin/brew'
+    File.write(File.join(@directory, 'ready'), 'test')
+    calls = []
+
+    Beacon.stub(:system, ->(*args) { calls << args; true }) { Beacon.start }
+
+    assert_equal ['/opt/homebrew/bin/brew', 'services', 'restart', 'rynzh/tap/agent-beacon'], calls.first.first(4)
+    assert_equal 1, calls.size
+  ensure
+    ENV['AGENT_BEACON_BREW'] = previous_brew
   end
 
   def live_snapshot(requests = [], flags = [], status = 'active', revision = 1)

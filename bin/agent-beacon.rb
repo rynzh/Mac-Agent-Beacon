@@ -14,6 +14,7 @@ module Beacon
   HELPER = File.join(ROOT, 'build', 'beacon-led')
   STATES = %w[working attention done idle error].freeze
   DONE_SECONDS = 6
+  LED_REFRESH_SECONDS = 5
   EVENTS = {
     'UserPromptSubmit' => 'working', 'PreToolUse' => 'working',
     'PostToolUse' => 'working', 'PermissionRequest' => 'attention',
@@ -84,6 +85,32 @@ module Beacon
     end
   end
 
+  def self.led_write_due?(mode, command, previous_mode, previous_command, seconds_since_write)
+    command != previous_command || mode != previous_mode ||
+      (mode == 'working' && seconds_since_write >= LED_REFRESH_SECONDS)
+  end
+
+  def self.restore_led(helper = HELPER)
+    fresh = IO.popen([helper, 'serve'], 'r+')
+    fresh.sync = true
+    raise 'HID restore helper failed to start' unless Timeout.timeout(2) { fresh.gets } == "ready\n"
+    fresh.write('r')
+    raise 'HID restore write failed' unless Timeout.timeout(2) { fresh.gets } == "ok\n"
+    true
+  rescue StandardError => error
+    warn "Agent Beacon could not restore Caps Lock LED: #{error.message}"
+    false
+  ensure
+    if fresh && !fresh.closed?
+      begin
+        fresh.close_write
+        fresh.close
+      rescue StandardError => error
+        warn "Agent Beacon could not close LED restore helper: #{error.message}"
+      end
+    end
+  end
+
   def self.hook(agent, input)
     data = JSON.parse(input)
     raise ArgumentError, 'hook payload must be an object' unless data.is_a?(Hash)
@@ -111,7 +138,7 @@ module Beacon
       log = File.open(File.join(runtime, 'daemon.log'), 'a', 0600)
       begin
         if ENV['AGENT_BEACON_BREW']
-          raise 'Could not start Homebrew service; run agent-beacon setup' unless system(ENV.fetch('AGENT_BEACON_BREW'), 'services', 'start', 'rynzh/tap/agent-beacon', out: log, err: log)
+          raise 'Could not start Homebrew service; run agent-beacon setup' unless system(ENV.fetch('AGENT_BEACON_BREW'), 'services', 'restart', 'rynzh/tap/agent-beacon', out: log, err: log)
         elsif File.file?(File.join(runtime, 'service-receipt.json'))
           raise 'Could not start managed controller service' unless system('/bin/launchctl', 'kickstart', "gui/#{Process.uid}/local.agent-beacon.controller", out: log, err: log)
         else
@@ -140,6 +167,7 @@ module Beacon
       File.write(File.join(runtime, 'ready'), Process.pid.to_s)
       previous = nil
       previous_mode = nil
+      last_led_write = nil
       phase_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       previous_backlight = nil
       backlight = Backlight.new
@@ -189,16 +217,19 @@ module Beacon
           command = caps_command(current, elapsed)
           backlight_phase = backlight_command(current, elapsed)
           enabled = Backlight.enabled?(runtime)
-          if command != previous || current != previous_mode
+          write_led = led_write_due?(current, command, previous_mode, previous,
+                                     last_led_write ? phase - last_led_write : Float::INFINITY)
+          if write_led
             output.write(command) if output
             raise 'HID write failed; see daemon.log' if output && Timeout.timeout(2) { output.gets } != "ok\n"
+            last_led_write = phase
           end
           backlight_status = if simulation
                                {'enabled' => enabled, 'active' => false, 'error' => nil, 'simulated' => true}
                              else
                                backlight.update(current, backlight_phase, enabled: enabled).merge('simulated' => false)
                              end
-          if command != previous || current != previous_mode || backlight_status != previous_backlight
+          if write_led || backlight_status != previous_backlight
             File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, backlight: backlight_status, at: Time.now.to_f }))
             previous = command
             previous_mode = current
@@ -214,6 +245,7 @@ module Beacon
           output.close_write
           output.close
         end
+        restore_led unless simulation
         FileUtils.rm_f(File.join(runtime, 'ready'))
       end
     end
