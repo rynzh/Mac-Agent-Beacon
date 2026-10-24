@@ -13,6 +13,8 @@ Until a dedicated private reporting address is set up, open a minimal GitHub iss
   CoreBrightness. It restores brightness and sensor/dimming settings on normal
   shutdown, pipe closure, handled signals, and a two-second input timeout. Like
   any process, it cannot clean up after SIGKILL or power loss.
-- The optional mapping installer makes recoverable backups and refuses unexpected existing mappings.
+- Agent Beacon never reads key events or changes keyboard mappings.
+- The built-in LED override uses an undocumented macOS HID property. If that
+  property is unavailable, the controller stops instead of simulating a key.
 
-These protections do not replace independent review before using the optional remapping installer.
+These protections do not replace independent review before installing a background service.

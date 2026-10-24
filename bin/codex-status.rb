@@ -8,6 +8,8 @@ module Beacon
       @since = since
       @seen = {}
       @startup_reconciled = false
+      @database_signature = nil
+      @last_scan_at = nil
     end
 
     def self.failure_reason(code)
@@ -23,6 +25,9 @@ module Beacon
 
     def poll
       return unless File.file?(@path)
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      signature = database_signature
+      return if signature == @database_signature && @last_scan_at && now - @last_scan_at < 60
       startup_sessions = if @startup_reconciled
                            []
                          else
@@ -52,6 +57,17 @@ module Beacon
       rows = out.strip.empty? ? [] : JSON.parse(out)
       rows.each { |row| apply(row) }
       @startup_reconciled = true
+      @database_signature = signature
+      @last_scan_at = now
+    end
+
+    def database_signature
+      [@path, "#{@path}-wal"].map do |path|
+        stat = File.stat(path)
+        [stat.ino, stat.size, stat.mtime.to_i, stat.mtime.nsec]
+      rescue Errno::ENOENT
+        nil
+      end
     end
 
     def apply(row)

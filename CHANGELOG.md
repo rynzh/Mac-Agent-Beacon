@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Decouple the built-in Caps Lock LED from logical Caps Lock on macOS 26 and
+  later with the HID service override. Agent Beacon owns only the light and
+  restores normal system-managed behavior when it exits.
+- Remove the legacy device-grab and keyboard-remapping utilities from the
+  distributed project.
 - Reconcile persisted Codex working sessions with the latest turn status when
   the controller starts, preventing completed tasks from leaving the LED on.
 - Add opt-in whole-keyboard backlight alerts, synchronized with the Caps Lock

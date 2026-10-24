@@ -8,7 +8,6 @@ labels: bug
 
 - macOS version:
 - Built-in keyboard model:
-- Karabiner enabled:
 - Agent Beacon commit:
 
 ## Expected behavior

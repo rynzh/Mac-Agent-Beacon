@@ -31,13 +31,25 @@ module Beacon
     File.open(File.join(runtime, 'state.lock'), File::RDWR | File::CREAT, 0600) do |lock|
       lock.flock(File::LOCK_EX)
       path = File.join(runtime, 'state.json')
-      state = File.exist?(path) ? JSON.parse(File.read(path)) : {}
+      existed = File.exist?(path)
+      state = existed ? JSON.parse(File.read(path)) : {}
+      before = JSON.generate(state)
       result = yield state
-      temporary = "#{path}.#{Process.pid}.tmp"
-      File.open(temporary, 'w', 0600) { |file| file.write(JSON.generate(state)) }
-      File.rename(temporary, path)
+      after = JSON.generate(state)
+      if after != before
+        temporary = "#{path}.#{Process.pid}.tmp"
+        File.open(temporary, 'w', 0600) { |file| file.write(after) }
+        File.rename(temporary, path)
+      end
       result
     end
+  end
+
+  def self.state_signature
+    stat = File.stat(File.join(runtime, 'state.json'))
+    [stat.ino, stat.size, stat.mtime.to_i, stat.mtime.nsec]
+  rescue Errno::ENOENT
+    nil
   end
 
   def self.event(agent, session, status, turn = nil)
@@ -88,6 +100,10 @@ module Beacon
   def self.led_write_due?(mode, command, previous_mode, previous_command, seconds_since_write)
     command != previous_command || mode != previous_mode ||
       (mode == 'working' && seconds_since_write >= LED_REFRESH_SECONDS)
+  end
+
+  def self.output_write_due?(mode, command, backlight, previous_mode, previous_command, previous_backlight)
+    mode != previous_mode || command != previous_command || backlight != previous_backlight
   end
 
   def self.restore_led(helper = HELPER)
@@ -229,7 +245,7 @@ module Beacon
                              else
                                backlight.update(current, backlight_phase, enabled: enabled).merge('simulated' => false)
                              end
-          if write_led || backlight_status != previous_backlight
+          if output_write_due?(current, command, backlight_status, previous_mode, previous, previous_backlight)
             File.write(File.join(runtime, 'output.json'), JSON.generate({ mode: current, command: command, simulated: simulation, backlight: backlight_status, at: Time.now.to_f }))
             previous = command
             previous_mode = current
@@ -338,7 +354,7 @@ module Beacon
         end
         raise 'Hardware demo failed; inspect daemon/system permissions' unless $?.success?
       end
-      puts 'LED commands completed; confirm the physical light and Command shortcuts visually.'
+      puts 'LED commands completed; confirm the physical light changed while Caps Lock behavior stayed untouched.'
     when 'event'
       raise ArgumentError, 'event AGENT SESSION STATE [TURN]' unless (3..4).cover?(args.size)
       event(*args); start

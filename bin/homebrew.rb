@@ -12,7 +12,7 @@ module BeaconHomebrew
     when 'setup'
       raise 'Codex configuration not found. Start Codex once before setup.' unless File.directory?(File.dirname(config))
       legacy = File.join(home, 'Library', 'LaunchAgents', 'local.agent-beacon.controller.plist')
-      raise 'Legacy service detected. Use its original uninstaller before Homebrew setup; keyboard mappings must be preserved.' if File.exist?(legacy) || File.symlink?(legacy)
+      raise 'Legacy service detected. Review the migration notes before Homebrew setup.' if File.exist?(legacy) || File.symlink?(legacy)
       FileUtils.mkdir_p(Beacon.runtime, mode: 0700)
       File.open(File.join(Beacon.runtime, 'daemon.lock'), File::RDWR | File::CREAT, 0600) do |lock|
         if !File.file?(File.join(Beacon.runtime, 'homebrew.json')) && !lock.flock(File::LOCK_EX | File::LOCK_NB)

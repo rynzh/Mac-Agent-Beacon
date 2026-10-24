@@ -8,10 +8,10 @@ Use `AGENT_BEACON_SIMULATE=1` for controller-only work. Do not treat simulated o
 
 ## Pull requests
 
-- Keep keyboard behavior unchanged unless the change is explicitly about the opt-in mapping installer.
+- Keep keyboard behavior unchanged; the project owns only the indicator light.
 - Never add synthetic Caps Lock key events or modifier-state writes as an LED fallback.
 - Add a focused test for state transitions and run `make test`.
-- Describe the manual hardware check, macOS version, keyboard model and Karabiner state.
+- Describe the manual hardware check, macOS version, keyboard model and reported LED ownership backend.
 
 ## Reporting bugs
 

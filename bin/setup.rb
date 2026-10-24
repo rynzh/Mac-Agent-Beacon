@@ -62,7 +62,6 @@ module BeaconSetup
     puts "Then start a new Codex task. If macOS requests an app restart, save work first."
     puts "Status: \"#{application}/bin/beacon\" status"
     puts "Restart after permission: \"#{application}/bin/beacon\" service restart" if service
-    puts 'Existing Karabiner device ownership can still block the LED; see README.'
   end
 
   def self.main(args)

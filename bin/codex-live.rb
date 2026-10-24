@@ -126,25 +126,35 @@ module Beacon
       @owners = {}
       @foreign_followers = Hash.new { |hash, key| hash[key] = [] }
       @conversation_by_session = {}
-      @desired_sessions = []
+      @hook_sessions = []
+      @state_signature = Object.new
+      @desired_sessions = nil
       @initialized_sessions = []
       @retry_at = 0
       @scan_at = 0
       @client = nil
       @initialize_deadline = nil
       @initialize_id = nil
+      @published_status = nil
     end
 
     def poll
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      hook_sessions = Beacon.transaction do |records|
-        records.values.select { |state| state['agent'] == 'codex' }.map { |state| state['session'] }
+      signature = Beacon.state_signature
+      if signature != @state_signature
+        @hook_sessions = Beacon.transaction do |records|
+          records.values.select { |state| state['agent'] == 'codex' }.map { |state| state['session'] }
+        end
+        @state_signature = signature
       end
-      @desired_sessions = (hook_sessions.map { |session| conversation_id(session) } + @foreign_followers.keys).uniq
+      desired_sessions = (@hook_sessions.map { |session| conversation_id(session) } + @foreign_followers.keys).uniq
+      if desired_sessions != @desired_sessions
+        @desired_sessions = desired_sessions
+        reconcile(@desired_sessions)
+      end
       reconnect if @client && (@desired_sessions - @initialized_sessions).any?
       connect if !@socket && now >= @retry_at
       drain if @socket
-      reconcile(@desired_sessions)
       return unless @socket
       raise 'IPC initialization timeout' if !@client && @initialize_deadline && now >= @initialize_deadline
       if @client && now >= @scan_at
@@ -162,10 +172,8 @@ module Beacon
           follow(session, true)
           @subscriptions[session] = now
         end
-        File.open(File.join(Beacon.runtime, 'live-status.json'), 'w', 0600) do |file|
-          file.write(JSON.generate({'connected' => true, 'protocol_version' => VERSION,
-                                    'subscribed' => @subscriptions.values.count(:ready), 'at' => Time.now.to_f}))
-        end
+        publish_status('connected' => true, 'protocol_version' => VERSION,
+                       'subscribed' => @subscriptions.values.count(:ready))
       end
     rescue StandardError => error
       warn "Agent Beacon live observer: #{error.class}"
@@ -284,10 +292,16 @@ module Beacon
     def disconnect
       @state.disconnected
       close
-      File.open(File.join(Beacon.runtime, 'live-status.json'), 'w', 0600) do |file|
-        file.write(JSON.generate({'connected' => false, 'at' => Time.now.to_f}))
-      end
+      publish_status('connected' => false)
       @retry_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+    end
+
+    def publish_status(status)
+      return if status == @published_status
+      File.open(File.join(Beacon.runtime, 'live-status.json'), 'w', 0600) do |file|
+        file.write(JSON.generate(status.merge('at' => Time.now.to_f)))
+      end
+      @published_status = status
     end
 
     def reconnect

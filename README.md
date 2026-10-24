@@ -9,6 +9,13 @@ or Node.js. Homebrew is recommended; a source installer is also available.
 It controls status lights only: it does not press keys, remap
 Caps Lock, or change your agent's approval policy.
 
+On macOS 26 and later, Agent Beacon places the built-in Caps Lock LED in an
+explicit `On` or `Off` override while it is active. Logical Caps Lock and every
+key event remain untouched. When Agent Beacon exits, it restores `Auto` so
+macOS resumes its normal LED behavior. This uses an undocumented macOS HID
+property and is feature-detected: if ownership is unavailable, Agent Beacon
+fails closed instead of falling back to key events or modifier-state changes.
+
 <p align="center">
   <img
     src="assets/agent-beacon-hero.png"
@@ -32,6 +39,7 @@ Caps Lock, or change your agent's approval policy.
 - Ordinary text such as “reply approve and I will continue” is not inferred.
 - Temporary network retries remain solid; only a terminal interruption alerts.
 - Built for Codex Desktop, with lifecycle hooks shared with Codex CLI.
+- Caps Lock behavior and user-defined key mappings remain independent of the LED.
 
 ### Optional whole-keyboard backlight alerts
 
@@ -81,7 +89,7 @@ this single command in Terminal as your normal user, without `sudo`:
 brew install --force-bottle rynzh/tap/agent-beacon && agent-beacon setup
 ```
 
-Requires Homebrew and macOS 15 or later. Apple Silicon and Intel bottles are
+Requires Homebrew and macOS 26 or later. Apple Silicon and Intel bottles are
 available; Homebrew manages Ruby automatically. The command requires a compatible
 bottle and will not silently fall back to compiling Agent Beacon from source.
 
@@ -130,8 +138,8 @@ If Homebrew reports `error 1`, inspect the service log:
 tail -n 40 "$(brew --prefix)/var/log/agent-beacon.log"
 ```
 
-An HID-access error means the helper could not access the LED; check Input
-Monitoring and possible keyboard-tool conflicts, then restart the service.
+An HID-access error means the helper could not obtain the built-in LED override;
+check Input Monitoring, run `agent-beacon doctor`, then restart the service.
 Do not disable macOS security or remove keyboard mappings to make it start.
 
 ### Upgrade or uninstall
@@ -168,23 +176,18 @@ agent-beacon setup
 These commands retain app files, logs and backups. Recheck Input Monitoring:
 the Homebrew helper is a different executable from the source-installed helper.
 
-If you used an early `persistence.rb` installation or depend on its Caps Lock /
-Command / Option mappings, **do not run its uninstaller blindly**: it can restore
-the old mappings. There is no automated mapping-preserving migration command.
-Keep the mapping service and configuration intact and review
-[the migration notes](docs/SAFETY.md) before switching controllers.
 See [Homebrew details](docs/HOMEBREW.md) for package and release information.
 
 ## Source installation requirements
 
-- macOS with a supported built-in Apple keyboard and Caps Lock LED
+- macOS 26 or later with a supported built-in Apple keyboard and Caps Lock LED
 - Xcode Command Line Tools or Xcode
 - System Ruby 2.6 or newer, SQLite, Git, and Make
 - Codex installed and signed in
 
-External and Magic Keyboards are not currently supported. Karabiner-Elements may
-block LED access if it exclusively grabs the built-in keyboard. If Caps Lock still
-controls capitalization or input sources, macOS may also update the same LED.
+External and Magic Keyboards are not currently supported. The built-in key keeps
+its existing Caps Lock behavior or any user-selected mapping; Agent Beacon only
+overrides the physical indicator.
 
 ## Install from source (alternative)
 
@@ -308,5 +311,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the
 
 ## License
 
-[MIT](LICENSE). The LED helper includes adapted CapsPulse code; see
+[MIT](LICENSE). The LED helper includes an adapted `pi-caps-blink` technique; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

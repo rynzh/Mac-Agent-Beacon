@@ -21,7 +21,7 @@ Input Monitoring and Codex hook trust are manual. The helper path is printed by
 setup. The service retries after startup failure. To retry immediately after
 authorization, run `brew services restart agent-beacon`.
 
-The Homebrew package requires macOS 15 or later. Ruby is a Homebrew dependency.
+The Homebrew package requires macOS 26 or later. Ruby is a Homebrew dependency.
 The observer uses macOS's `/usr/bin/sqlite3`.
 The service and hooks do not depend on an interactive shell's PATH.
 
@@ -31,8 +31,6 @@ Do not run two installations against the same LED. Setup detects the legacy
 `local.agent-beacon.controller` LaunchAgent and refuses to overwrite it.
 For the source installer, remove its Codex hooks and managed service with its
 original `beacon` command before running Homebrew setup. Retain backups.
-For early installations that also managed keyboard mappings, follow
-[the migration notes](SAFETY.md); do not remove their service blindly.
 
 ## Upgrade and removal
 
@@ -54,7 +52,7 @@ Homebrew service and removes matching hooks; logs and backups remain.
    generated Formula as a GitHub prerelease.
 4. Copy the released Formula to the Tap, review it, and commit it.
 5. Dispatch the Tap's `bottles` workflow. It builds on Apple Silicon and Intel
-   macOS 15, tests the command, creates bottles, reinstalls them and tests again.
+   macOS 26, tests the command, creates bottles, reinstalls them and tests again.
 6. Successful builds publish bottle assets and commit their checksums into the
    Formula. Promote the source prerelease only after reviewing the results.
 

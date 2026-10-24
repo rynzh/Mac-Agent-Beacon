@@ -1,12 +1,12 @@
 # Third-party notices
 
-`native/led.c` is adapted from CapsPulse's `capsLockLed.c`, commit
-6f204081aaceb139d18de3239cd99138179b3a5c.
-https://github.com/ssk090/CapsPulse
+The `HIDCapsLockLED` service-override technique in `native/led.c` is adapted
+from `pi-caps-blink` 0.1.0.
+https://github.com/bstncartwright/pi-caps-blink
 
 MIT License
 
-Copyright (c) 2026 ssk090
+Copyright (c) 2026 Boston Cartwright
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

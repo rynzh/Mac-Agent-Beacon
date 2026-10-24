@@ -51,7 +51,7 @@ module BeaconService
 
   def self.remove(root, home: Dir.home, runner: ->(*args) { system(*args) })
     receipt_path = File.join(root, 'service-receipt.json')
-    raise 'No service receipt; legacy mapping installations must use their original uninstaller' unless File.file?(receipt_path)
+    raise 'No service receipt; legacy installations must use their original uninstaller' unless File.file?(receipt_path)
     receipt = JSON.parse(File.read(receipt_path))
     destination = path(home)
     raise 'Service receipt path mismatch' unless receipt['path'] == destination

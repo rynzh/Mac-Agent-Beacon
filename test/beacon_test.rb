@@ -19,6 +19,18 @@ class BeaconTest < Minitest::Test
     Beacon.transaction { |state| state.dup }
   end
 
+  def test_read_only_transaction_does_not_replace_state_file
+    Beacon.transaction { |state| state['seed'] = {'status' => 'idle', 'at' => Time.now.to_f} }
+    path = File.join(@directory, 'state.json')
+    before = File.stat(path)
+
+    5.times { Beacon.transaction { |state| state.size } }
+
+    after = File.stat(path)
+    assert_equal before.ino, after.ino, 'unchanged state must not be rewritten to disk'
+    assert_equal before.mtime, after.mtime
+  end
+
   def test_sessions_are_independent
     Beacon.event('codex', 'a', 'working')
     Beacon.event('claude', 'b', 'done')
@@ -60,6 +72,9 @@ class BeaconTest < Minitest::Test
     assert Beacon.led_write_due?('working', '1', 'working', '1', 5.0)
     refute Beacon.led_write_due?('idle', '0', 'idle', '0', 60.0)
     assert Beacon.led_write_due?('idle', '0', 'working', '1', 0.0)
+    status = {'enabled' => false, 'active' => false, 'error' => nil, 'simulated' => false}
+    refute Beacon.output_write_due?('working', '1', status, 'working', '1', status),
+           'a hardware heartbeat must not rewrite unchanged output status'
   end
 
   def test_controller_exit_uses_a_fresh_helper_to_restore_the_led
@@ -238,6 +253,41 @@ class BeaconTest < Minitest::Test
     server.close if server
   end
 
+  def test_idle_live_observer_reads_state_only_once
+    observer = Beacon::CodexLive.new('/missing')
+    original = Beacon.method(:transaction)
+    calls = 0
+    replacement = lambda do |&block|
+      calls += 1
+      original.call(&block)
+    end
+
+    Beacon.stub(:transaction, replacement) { 20.times { observer.poll } }
+
+    assert_equal 2, calls, 'unchanged live polling may initialize and reconcile once, not reread every 100 ms tick'
+  ensure
+    observer.close if observer
+  end
+
+  def test_live_status_file_is_not_rewritten_when_connection_state_is_unchanged
+    client, server = UNIXSocket.pair
+    observer = Beacon::CodexLive.new('/missing')
+    observer.instance_variable_set(:@socket, client)
+    observer.instance_variable_set(:@client, 'observer')
+    observer.poll
+    path = File.join(@directory, 'live-status.json')
+    before = File.stat(path)
+
+    observer.instance_variable_set(:@scan_at, 0)
+    observer.poll
+
+    after = File.stat(path)
+    assert_equal before.mtime, after.mtime, 'unchanged connection status must not be rewritten every second'
+  ensure
+    observer.close if observer
+    server.close if server && !server.closed?
+  end
+
   def test_live_socket_frames_deliver_approval_and_resolution_without_control_commands
     path = File.join(@directory, 'observer.sock')
     server = UNIXServer.new(path)
@@ -353,6 +403,24 @@ class BeaconTest < Minitest::Test
     Open3.capture3('/usr/bin/sqlite3', database, "INSERT INTO thread_turns VALUES('a','next','inProgress',#{Time.now.to_i + 2},NULL,NULL,3);")
     observer.poll
     assert_equal 'working', Beacon.mode(snapshot)
+  end
+
+  def test_codex_database_poll_skips_unchanged_database
+    database = File.join(@directory, 'history.sqlite')
+    sql = "CREATE TABLE thread_turns(thread_id TEXT, turn_id TEXT, status TEXT, started_at INTEGER, completed_at INTEGER, error_json TEXT, rollout_ordinal INTEGER);"
+    _, _, result = Open3.capture3('/usr/bin/sqlite3', database, sql)
+    assert result.success?
+    observer = Beacon::CodexStatus.new(database, since: 10)
+    original = Open3.method(:capture3)
+    calls = 0
+    replacement = lambda do |*args|
+      calls += 1 if args.first == '/usr/bin/sqlite3'
+      original.call(*args)
+    end
+
+    Open3.stub(:capture3, replacement) { 2.times { observer.poll } }
+
+    assert_equal 1, calls, 'an unchanged Codex database must not launch another sqlite3 reader'
   end
 
   def test_codex_database_poll_reconciles_persisted_working_turn_completed_before_startup
